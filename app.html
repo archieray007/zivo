@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f6b4a'/%3E%3Cpath d='M9 10.5h14L9 21.5h14' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zivo: your invoices</title>
+<meta name="description" content="Zivo is a free invoice generator for freelancers in India. Create GST invoices, save clients, add UPI or bank details, and track paid and overdue invoices.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <button class="brand" id="brand" type="button">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+      Zivo
+    </button>
+    <nav class="nav" aria-label="Main">
+      <button type="button" id="navDash">Dashboard</button>
+      <button type="button" id="navProfile">Business profile</button>
+    </nav>
+    <div class="top-right">
+      <span class="who" id="who"></span>
+      <button class="btn small ghost" id="logoutBtn" type="button">Log out</button>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Switch theme"></button>
+      <button class="btn primary" id="newBtn" type="button"></button>
+    </div>
+  </div>
+</header>
+
+<main class="app" id="app"></main>
+<div id="toast" role="status" aria-live="polite"></div>
+<noscript>Zivo needs JavaScript turned on to work.</noscript>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+
+<script>
+(function () {
+  "use strict";
+  var SUPABASE_URL = "https://hufwxisjdaelrmdnzika.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_fxtj-wbvkmVlDNM3isRwHA_AMGWVdhC";
+  var THEME_KEY = "zivo-theme";
+
+  /* ---------- tiny helpers ---------- */
+  function $(s, r) { return (r || document).querySelector(s); }
+  function h(tag, props) {
+    var e = document.createElement(tag);
+    if (props) {
+      Object.keys(props).forEach(function (k) {
+        var v = props[k];
+        if (v === null || v === undefined || v === false) return;
+        if (k === "class") e.className = v;
+        else if (k === "text") e.textContent = v;
+        else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), v);
+        else if (k === "value") e.value = v;
+        else e.setAttribute(k, v === true ? "" : v);
+      });
+    }
+    for (var i = 2; i < arguments.length; i++) add(e, arguments[i]);
+    return e;
+  }
+  function add(parent, c) {
+    if (c === null || c === undefined || c === false) return;
+    if (Array.isArray(c)) { c.forEach(function (x) { add(parent, x); }); return; }
+    parent.appendChild(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  var IC = {
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
+    send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+    alert: '<path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+    check: '<path d="M20 6L9 17l-5-5"/>',
+    trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
+    download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+    moon: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    back: '<path d="M15 18l-6-6 6-6"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+  };
+  function icon(name, size) {
+    var s = document.createElement("span");
+    s.className = "ic";
+    s.setAttribute("aria-hidden", "true");
+    s.innerHTML = '<svg viewBox="0 0 24 24" width="' + (size || 16) + '" height="' + (size || 16) +
+      '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + IC[name] + "</svg>";
+    return s;
+  }
+  function num(v) { var n = parseFloat(v); return isFinite(n) ? n : 0; }
+  function todayISO(off) {
+    var d = new Date(); d.setDate(d.getDate() + (off || 0));
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function daysUntil(iso) {
+    if (!iso) return 9999;
+    var a = new Date(iso + "T00:00:00"), b = new Date(todayISO() + "T00:00:00");
+    if (isNaN(a)) return 9999;
+    return Math.round((a - b) / 86400000);
+  }
+  function fmtDate(iso) {
+    if (!iso) return "-";
+    var d = new Date(iso + "T00:00:00");
+    return isNaN(d) ? "-" : d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  }
+  function money(n, cur) {
+    cur = cur || "INR";
+    try { return new Intl.NumberFormat(cur === "INR" ? "en-IN" : "en-US", { style: "currency", currency: cur }).format(n); }
+    catch (e) { return n.toFixed(2); }
+  }
+  function plural(n, w) { return n + " " + w + (n === 1 ? "" : "s"); }
+
+  /* ---------- data ---------- */
+  function emptyPay() { return { method: "none", upi: "", qr: false, qrImg: "", holder: "", bank: "", acc: "", ifsc: "", other: "" }; }
+  function defaultStore() {
+    return {
+      theme: null,
+      profile: { name: "", tagline: "", details: "", gstin: "", logo: "", tpl: "classic", logoPos: "left", logoSize: "m", wm: false, footer: "", currency: "INR", taxSel: "18", taxCustom: "", dueDays: 14, pay: emptyPay(), notes: "" },
+      clients: [], invoices: []
+    };
+  }
+  function normalizeInvoice(i) {
+    i = i || {};
+    i.client = Object.assign({ name: "", details: "", phone: "", email: "" }, i.client || {});
+    i.items = Array.isArray(i.items) && i.items.length ? i.items : [{ d: "", q: 1, r: "" }];
+    i.pay = Object.assign(emptyPay(), i.pay || {});
+    if (["draft", "sent", "paid"].indexOf(i.status) < 0) i.status = "draft";
+    i.currency = i.currency || "INR";
+    i.taxSel = i.taxSel === undefined ? "0" : String(i.taxSel);
+    i.taxCustom = i.taxCustom || "";
+    i.notes = i.notes || "";
+    i.discType = i.discType === "flat" ? "flat" : "pct"; i.discVal = i.discVal || ""; i.lateRate = i.lateRate || ""; i.lang = i.lang === "hi" ? "hi" : "en";
+    return i;
+  }
+  var store = defaultStore();
+  try { var th = localStorage.getItem(THEME_KEY); if (th === "dark" || th === "light") store.theme = th; } catch (e) { /* ignore */ }
+  var view = "loading", currentId = null, filter = "all", clientFilter = "all", receiptMode = false;
+  var sb = null, user = null, errorText = "";
+  var savedIds = {}, timers = {}, profileTimer = null, inflight = 0, syncError = false, everSaved = false;
+
+  function uuid() {
+    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16);
+    });
+  }
+  function resetData() {
+    var d = defaultStore();
+    store.profile = d.profile; store.clients = []; store.invoices = [];
+    savedIds = {}; currentId = null; filter = "all"; clientFilter = "all";
+    Object.keys(timers).forEach(function (k) { clearTimeout(timers[k]); delete timers[k]; });
+    if (profileTimer) { clearTimeout(profileTimer); profileTimer = null; }
+  }
+
+  /* ----- saving status ----- */
+  function pendingCount() { return inflight + Object.keys(timers).length + (profileTimer ? 1 : 0); }
+  function flashSaved() {
+    var saving = pendingCount() > 0;
+    document.querySelectorAll(".saved").forEach(function (el) {
+      el.textContent = "";
+      el.classList.remove("idle");
+      el.classList.toggle("bad", syncError);
+      if (syncError) { el.appendChild(icon("alert", 14)); el.appendChild(document.createTextNode(" Not saved. Check your internet and try again.")); }
+      else if (saving) { el.appendChild(document.createTextNode("Saving...")); }
+      else { el.appendChild(icon("check", 14)); el.appendChild(document.createTextNode(" Saved")); }
+    });
+  }
+  function savedEl() {
+    var el = h("span", { class: "saved idle", "aria-live": "polite" }, "Changes save automatically");
+    if (everSaved) setTimeout(flashSaved, 0);
+    return el;
+  }
+  function track(promise) {
+    inflight++; everSaved = true; flashSaved();
+    return Promise.resolve(promise).then(function (res) {
+      inflight--;
+      if (res && res.error) { syncError = true; console.error(res.error); } else { syncError = false; }
+      flashSaved(); return res;
+    }, function (err) { inflight--; syncError = true; console.error(err); flashSaved(); });
+  }
+
+  /* ----- saving to Supabase ----- */
+  function invoiceRow(inv) {
+    return {
+      id: inv.id, user_id: user.id, number: inv.number || "", client_name: inv.client.name || "",
+      status: inv.status, due_date: inv.due || null, paid_at: inv.paidAt || null,
+      total: totals(inv).total, currency: inv.currency, data: JSON.parse(JSON.stringify(inv)),
+      updated_at: new Date().toISOString()
+    };
+  }
+  function saveInvoiceNow(inv) {
+    if (!user) return Promise.resolve();
+    if (timers[inv.id]) { clearTimeout(timers[inv.id]); delete timers[inv.id]; }
+    if (isBlank(inv) && !savedIds[inv.id]) { flashSaved(); return Promise.resolve(); }
+    savedIds[inv.id] = true;
+    return track(sb.from("invoices").upsert(invoiceRow(inv)));
+  }
+  function scheduleInvoice(inv) {
+    if (timers[inv.id]) clearTimeout(timers[inv.id]);
+    timers[inv.id] = setTimeout(function () { delete timers[inv.id]; saveInvoiceNow(inv); }, 600);
+    flashSaved();
+  }
+  function removeInvoice(inv) {
+    if (timers[inv.id]) { clearTimeout(timers[inv.id]); delete timers[inv.id]; }
+    store.invoices = store.invoices.filter(function (x) { return x.id !== inv.id; });
+    if (savedIds[inv.id] && user) { delete savedIds[inv.id]; return track(sb.from("invoices").delete().eq("id", inv.id)); }
+    flashSaved();
+    return Promise.resolve();
+  }
+  function saveProfileNow() {
+    if (profileTimer) { clearTimeout(profileTimer); profileTimer = null; }
+    if (!user) return Promise.resolve();
+    return track(sb.from("profiles").upsert({ id: user.id, data: JSON.parse(JSON.stringify(store.profile)), updated_at: new Date().toISOString() }));
+  }
+  function scheduleProfile() {
+    if (profileTimer) clearTimeout(profileTimer);
+    profileTimer = setTimeout(function () { profileTimer = null; saveProfileNow(); }, 600);
+    flashSaved();
+  }
+  function saveClient(c) {
+    if (!user) return Promise.resolve();
+    return track(sb.from("clients").upsert({ id: c.id, user_id: user.id, name: c.name, details: c.details || "" }));
+  }
+  function flushAll() {
+    var jobs = [];
+    Object.keys(timers).forEach(function (id) { var inv = getInv(id); if (inv) jobs.push(saveInvoiceNow(inv)); });
+    if (profileTimer) jobs.push(saveProfileNow());
+    return Promise.all(jobs);
+  }
+  function saveTheme() { try { localStorage.setItem(THEME_KEY, store.theme); } catch (e) { /* ignore */ } }
+
+  /* ----- loading from Supabase ----- */
+  function loadAll() {
+    view = "loading"; render();
+    return Promise.all([
+      sb.from("profiles").select("data").eq("id", user.id).maybeSingle(),
+      sb.from("clients").select("id,name,details").order("name"),
+      sb.from("invoices").select("id,data,created_at").order("created_at", { ascending: false })
+    ]).then(function (r) {
+      var err = r[0].error || r[1].error || r[2].error;
+      if (err) throw err;
+      var d = defaultStore();
+      store.profile = Object.assign(d.profile, (r[0].data && r[0].data.data) || {});
+      store.profile.pay = Object.assign(emptyPay(), store.profile.pay || {});
+      store.clients = r[1].data || [];
+      savedIds = {};
+      store.invoices = (r[2].data || []).map(function (row) {
+        savedIds[row.id] = true;
+        var inv = normalizeInvoice(Object.assign({}, row.data || {}));
+        inv.id = row.id; inv.createdAt = new Date(row.created_at).getTime();
+        return inv;
+      });
+      view = store.profile.name ? "dash" : "profile";
+      render();
+      if (view === "profile") toast("Welcome! Add your business details first, then create an invoice.");
+    }).catch(function (e) {
+      console.error(e);
+      errorText = "We couldn't load your invoices. Check your internet connection and try again.";
+      view = "error"; render();
+    });
+  }
+
+  /* ----- sign in state ----- */
+  function handleSession(session, ev) {
+    var u = session ? session.user : null;
+    if (ev === "PASSWORD_RECOVERY") recovering = true;
+    if (u && recovering) { user = u; view = "reset"; render(); return; }
+    if (u) {
+      if (!user || user.id !== u.id) { user = u; setTimeout(loadAll, 0); }
+    } else if (user || view === "loading") {
+      user = null; resetData(); view = "auth"; pubPage = "auth"; render();
+    }
+  }
+
+  var toastTimer;
+  function toast(msg) {
+    var t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 3200);
+  }
+
+  function getInv(id) { for (var i = 0; i < store.invoices.length; i++) if (store.invoices[i].id === id) return store.invoices[i]; return null; }
+  function taxRate(inv) { return inv.taxSel === "custom" ? num(inv.taxCustom) : num(inv.taxSel); }
+  function totals(inv) {
+    var sub = 0;
+    inv.items.forEach(function (it) { sub += num(it.q) * num(it.r); });
+    var dv = Math.max(0, num(inv.discVal));
+    var disc = inv.discType === "flat" ? Math.min(dv, sub) : sub * Math.min(dv, 100) / 100;
+    var rate = taxRate(inv), tax = (sub - disc) * rate / 100, base = sub - disc + tax;
+    var late = 0, lateDays = 0;
+    if (inv.status === "paid") {
+      late = Math.max(0, num(inv.lateFeePaid)); lateDays = num(inv.lateDaysPaid);
+    } else if (inv.status === "sent" && num(inv.lateRate) > 0 && daysUntil(inv.due) < 0) {
+      lateDays = -daysUntil(inv.due);
+      late = Math.min(base, base * Math.min(num(inv.lateRate), 100) / 100 * lateDays);
+    }
+    return { sub: sub, disc: disc, rate: rate, tax: tax, late: late, lateDays: lateDays, total: base + late };
+  }
+  function effStatus(inv) {
+    if (inv.status === "paid") return "paid";
+    if (inv.status === "draft") return "draft";
+    return daysUntil(inv.due) < 0 ? "overdue" : "sent";
+  }
+  function isBlank(inv) {
+    return !inv.client.name.trim() && inv.items.every(function (it) { return !String(it.d).trim() && !num(it.r); });
+  }
+  function nextNumber() {
+    var max = 0;
+    store.invoices.forEach(function (i) { var m = String(i.number || "").match(/(\d+)$/); if (m) max = Math.max(max, parseInt(m[1], 10)); });
+    return "INV-" + String(max + 1).padStart(3, "0");
+  }
+  function createInvoice() {
+    var p = store.profile, dd = parseInt(p.dueDays, 10);
+    var inv = normalizeInvoice({
+      id: uuid(),
+      number: nextNumber(), status: "draft", createdAt: Date.now(),
+      issue: todayISO(0), due: todayISO(isFinite(dd) ? dd : 14),
+      currency: p.currency || "INR", taxSel: p.taxSel || "0", taxCustom: p.taxCustom || "",
+      client: { name: "", details: "" }, items: [{ d: "", q: 1, r: "" }],
+      pay: Object.assign({}, p.pay), notes: p.notes || "", paidAt: ""
+    });
+    store.invoices.push(inv);
+    return inv;
+  }
+  function upsertClient(inv) {
+    var name = inv.client.name.trim();
+    if (!name) return;
+    var c = findClient(name);
+    if (c) {
+      var ch = false;
+      if (inv.client.details.trim() && c.details !== inv.client.details) { c.details = inv.client.details; ch = true; }
+      if (c.name !== name) { c.name = name; ch = true; }
+      if (ch) saveClient(c);
+    } else {
+      c = { id: uuid(), name: name, details: inv.client.details };
+      store.clients.push(c);
+      saveClient(c);
+    }
+  }
+  function findClient(name) {
+    var key = name.trim().toLowerCase(), found = null;
+    if (!key) return null;
+    store.clients.forEach(function (c) { if (c.name.toLowerCase() === key) found = c; });
+    return found;
+  }
+
+  /* ---------- small UI parts ---------- */
+  var LABELS = { draft: "Draft", sent: "Sent", overdue: "Overdue", paid: "Paid" };
+  var ICONS = { draft: "pencil", sent: "send", overdue: "alert", paid: "check" };
+  function pill(st) { return h("span", { class: "pill pill-" + st }, icon(ICONS[st], 14), LABELS[st]); }
+
+  function field(label, control, hint) {
+    return h("label", { class: "f" }, h("span", { class: "fl", text: label }), control, hint ? h("span", { class: "hint", text: hint }) : null);
+  }
+  function cleanEmail(v) { return String(v).replace(/[^A-Za-z0-9@._+\-]/g, ""); }
+  function cleanPhone(v) { var d = String(v).replace(/\D/g, ""); if (d.length > 10 && d.slice(0, 2) === "91") d = d.slice(2); return d.slice(0, 10); }
+  function mailUrl(to, sub, body) {
+    var from = String((store.profile && store.profile.email) || "").toLowerCase(), dom = from.split("@")[1] || "", q = "subject=" + encodeURIComponent(sub) + "&body=" + encodeURIComponent(body);
+    if (/^(outlook|hotmail|live|msn)\./.test(dom)) return "https://outlook.live.com/mail/0/deeplink/compose?to=" + encodeURIComponent(to) + "&" + q;
+    if (/^(yahoo|ymail|rocketmail)\./.test(dom)) return "https://compose.mail.yahoo.com/?to=" + encodeURIComponent(to) + "&" + q;
+    if (/^(proton\.me|protonmail\.com|pm\.me)$/.test(dom)) return "mailto:" + encodeURIComponent(to) + "?" + q;
+    if (dom && !/^(gmail|googlemail)\./.test(dom)) return "mailto:" + encodeURIComponent(to) + "?" + q;
+    return "https://mail.google.com/mail/?" + (from ? "authuser=" + encodeURIComponent(from) + "&" : "") + "view=cm&fs=1&to=" + encodeURIComponent(to) + "&su=" + encodeURIComponent(sub) + "&body=" + encodeURIComponent(body);
+  }
+  function inp(obj, key, cb, attrs) {
+    var clean = attrs && attrs.clean;
+    var props = { type: "text", value: obj[key] === undefined ? "" : obj[key], oninput: function () { if (clean) { var c2 = clean(el.value); if (c2 !== el.value) el.value = c2; } obj[key] = el.value; if (cb) cb(); } };
+    Object.keys(attrs || {}).forEach(function (k) { if (k !== "clean") props[k] = attrs[k]; });
+    var el = h("input", props);
+    return el;
+  }
+  function area(obj, key, cb, attrs) {
+    var props = { oninput: function () { obj[key] = el.value; if (cb) cb(); } };
+    Object.keys(attrs || {}).forEach(function (k) { props[k] = attrs[k]; });
+    var el = h("textarea", props);
+    el.value = obj[key] || "";
+    return el;
+  }
+  function selectEl(opts, val, cb) {
+    var s = h("select", { onchange: function () { cb(s.value); } },
+      opts.map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+    s.value = val;
+    return s;
+  }
+  var CURRENCIES = [["INR", "₹ INR"], ["USD", "$ USD"], ["EUR", "€ EUR"], ["GBP", "£ GBP"]];
+  var TAXES = [["0", "No GST (0%)"], ["5", "5%"], ["12", "12%"], ["18", "18%"], ["28", "28%"], ["custom", "Custom"]];
+
+  var EXTRA = [["x_slate", "Slate"], ["x_ocean", "Ocean"], ["x_forest", "Forest"], ["x_sunset", "Sunset"], ["x_royal", "Royal"], ["x_rose", "Rose"], ["x_midnight", "Midnight"], ["x_emerald", "Emerald"], ["x_plum", "Plum"], ["x_copper", "Copper"], ["x_tealbox", "Teal Box"], ["x_charcoal", "Charcoal"], ["x_sky", "Sky"], ["x_berry", "Berry"], ["x_olive", "Olive"], ["x_indigoline", "Indigo Line"], ["x_crimson", "Crimson"], ["x_gold", "Gold"], ["x_mint", "Mint"], ["x_navybox", "Navy Box"], ["x_lavender", "Lavender"], ["x_sand", "Sand"], ["x_steel", "Steel"], ["x_typewriter", "Typewriter"], ["x_aurora", "Aurora"]];
+  var GEN = [["g_ruby_band", "Ruby Band"], ["g_ruby_line", "Ruby Line"], ["g_ruby_box", "Ruby Box"], ["g_ruby_side", "Ruby Side"], ["g_ruby_frame", "Ruby Frame"], ["g_cherry_band", "Cherry Band"], ["g_cherry_line", "Cherry Line"], ["g_cherry_box", "Cherry Box"], ["g_cherry_side", "Cherry Side"], ["g_cherry_frame", "Cherry Frame"], ["g_coral_band", "Coral Band"], ["g_coral_line", "Coral Line"], ["g_coral_box", "Coral Box"], ["g_coral_side", "Coral Side"], ["g_coral_frame", "Coral Frame"], ["g_amber_band", "Amber Band"], ["g_amber_line", "Amber Line"], ["g_amber_box", "Amber Box"], ["g_amber_side", "Amber Side"], ["g_amber_frame", "Amber Frame"], ["g_honey_band", "Honey Band"], ["g_honey_line", "Honey Line"], ["g_honey_box", "Honey Box"], ["g_honey_side", "Honey Side"], ["g_honey_frame", "Honey Frame"], ["g_lime_band", "Lime Band"], ["g_lime_line", "Lime Line"], ["g_lime_box", "Lime Box"], ["g_lime_side", "Lime Side"], ["g_lime_frame", "Lime Frame"], ["g_fern_band", "Fern Band"], ["g_fern_line", "Fern Line"], ["g_fern_box", "Fern Box"], ["g_fern_side", "Fern Side"], ["g_fern_frame", "Fern Frame"], ["g_jade_band", "Jade Band"], ["g_jade_line", "Jade Line"], ["g_jade_box", "Jade Box"], ["g_jade_side", "Jade Side"], ["g_jade_frame", "Jade Frame"], ["g_spruce_band", "Spruce Band"], ["g_spruce_line", "Spruce Line"], ["g_spruce_box", "Spruce Box"], ["g_spruce_side", "Spruce Side"], ["g_spruce_frame", "Spruce Frame"], ["g_lagoon_band", "Lagoon Band"], ["g_lagoon_line", "Lagoon Line"], ["g_lagoon_box", "Lagoon Box"], ["g_lagoon_side", "Lagoon Side"], ["g_lagoon_frame", "Lagoon Frame"], ["g_azure_band", "Azure Band"], ["g_azure_line", "Azure Line"], ["g_azure_box", "Azure Box"], ["g_azure_side", "Azure Side"], ["g_azure_frame", "Azure Frame"], ["g_cobalt_band", "Cobalt Band"], ["g_cobalt_line", "Cobalt Line"], ["g_cobalt_box", "Cobalt Box"], ["g_cobalt_side", "Cobalt Side"], ["g_cobalt_frame", "Cobalt Frame"], ["g_sapphire_band", "Sapphire Band"], ["g_sapphire_line", "Sapphire Line"], ["g_sapphire_box", "Sapphire Box"], ["g_sapphire_side", "Sapphire Side"], ["g_sapphire_frame", "Sapphire Frame"], ["g_iris_band", "Iris Band"], ["g_iris_line", "Iris Line"], ["g_iris_box", "Iris Box"], ["g_iris_side", "Iris Side"], ["g_iris_frame", "Iris Frame"], ["g_violet_band", "Violet Band"], ["g_violet_line", "Violet Line"], ["g_violet_box", "Violet Box"], ["g_violet_side", "Violet Side"], ["g_violet_frame", "Violet Frame"], ["g_orchid_band", "Orchid Band"], ["g_orchid_line", "Orchid Line"], ["g_orchid_box", "Orchid Box"], ["g_orchid_side", "Orchid Side"], ["g_orchid_frame", "Orchid Frame"], ["g_magenta_band", "Magenta Band"], ["g_magenta_line", "Magenta Line"], ["g_magenta_box", "Magenta Box"], ["g_magenta_side", "Magenta Side"], ["g_magenta_frame", "Magenta Frame"], ["g_brick_band", "Brick Band"], ["g_brick_line", "Brick Line"], ["g_brick_box", "Brick Box"], ["g_brick_side", "Brick Side"], ["g_brick_frame", "Brick Frame"], ["g_cocoa_band", "Cocoa Band"], ["g_cocoa_line", "Cocoa Line"], ["g_cocoa_box", "Cocoa Box"], ["g_cocoa_side", "Cocoa Side"], ["g_cocoa_frame", "Cocoa Frame"], ["g_stone_band", "Stone Band"], ["g_stone_line", "Stone Line"], ["g_stone_box", "Stone Box"], ["g_stone_side", "Stone Side"], ["g_stone_frame", "Stone Frame"], ["g_graphite_band", "Graphite Band"], ["g_graphite_line", "Graphite Line"], ["g_graphite_box", "Graphite Box"], ["g_graphite_side", "Graphite Side"], ["g_graphite_frame", "Graphite Frame"], ["g_ink_band", "Ink Band"], ["g_ink_line", "Ink Line"], ["g_ink_box", "Ink Box"], ["g_ink_side", "Ink Side"], ["g_ink_frame", "Ink Frame"], ["g_pine_band", "Pine Band"], ["g_pine_line", "Pine Line"], ["g_pine_box", "Pine Box"], ["g_pine_side", "Pine Side"], ["g_pine_frame", "Pine Frame"], ["g_ember_band", "Ember Band"], ["g_ember_line", "Ember Line"], ["g_ember_box", "Ember Box"], ["g_ember_side", "Ember Side"], ["g_ember_frame", "Ember Frame"], ["g_dusk_band", "Dusk Band"], ["g_dusk_line", "Dusk Line"], ["g_dusk_box", "Dusk Box"], ["g_dusk_side", "Dusk Side"], ["g_dusk_frame", "Dusk Frame"], ["g_marine_band", "Marine Band"], ["g_marine_line", "Marine Line"], ["g_marine_box", "Marine Box"], ["g_marine_side", "Marine Side"], ["g_marine_frame", "Marine Frame"]];
+  function tplExtra(v) { var m = /^g_([a-z]+)_([a-z]+)$/.exec(v); return m ? " gk gk-" + m[2] + " gc-" + m[1] : ""; }
+  var TEMPLATES = [["classic", "Classic"], ["modern", "Modern"], ["professional", "Professional"], ["creative", "Creative"], ["gst", "GST Standard"]].concat(EXTRA);
+  var FREE_TPL = ["classic", "modern", "professional", "creative", "gst"];
+  var UNLOCK_ALL = false; /* preview mode: set to false to lock Pro designs again */
+  function isPro() { return !!(user && user.app_metadata && user.app_metadata.plan === "pro"); }
+  function tplSections() {
+    var keys = TEMPLATES.map(function (t) { return t[0]; });
+    function by(re) { return keys.filter(function (k) { return re.test(k); }); }
+    return [["Popular", ["classic", "modern", "professional", "creative", "gst", "x_aurora", "x_royal", "x_midnight", "x_ocean", "x_forest", "x_plum", "x_sky"]],
+      ["Signature styles", keys.filter(function (k) { return !/^g_/.test(k); })], ["Bold header bands", by(/_band$/)], ["Clean lines", by(/_line$/)], ["Boxed tables", by(/_box$/)], ["Side bar", by(/_side$/)], ["Framed pages", by(/_frame$/)]].filter(function (x) { return x[1].length; });
+  }
+  function tplPicker(cur, onPick, compact) {
+    var root = h("div", { class: "tp-wrap" }), secs = tplSections(), nm = {};
+    TEMPLATES.forEach(function (t) { nm[t[0]] = t[1]; });
+    function card(k) {
+      var locked = !UNLOCK_ALL && !isPro() && FREE_TPL.indexOf(k) < 0;
+      return h("button", { type: "button", class: "tp", "data-k": k, "aria-pressed": k === cur ? "true" : "false", onclick: function () {
+        if (locked) { toast("This design is part of Zivo Pro."); return; }
+        cur = k; [].forEach.call(root.querySelectorAll(".tp"), function (x) { x.setAttribute("aria-pressed", x.getAttribute("data-k") === k ? "true" : "false"); }); onPick(k); } },
+        h("div", { class: "tp-thumb tc-" + k + tplExtra(k) }, h("i", { class: "h" }), h("i", { class: "t" }), h("i"), h("i", { class: "d" })), nm[k] + (locked ? " 🔒" : ""));
+    }
+    function sec(x, row) {
+      var g = h("div", { class: row ? "tp-row" : "tp-grid" }); x[1].forEach(function (k) { g.appendChild(card(k)); });
+      return h("div", { class: "tp-sec" }, h("h3", { text: x[0] + " (" + x[1].length + ")" }), g);
+    }
+    if (compact) {
+      root.appendChild(sec(secs[0], true));
+      var d = h("details", { class: "tp-more" }, h("summary", { text: "Browse all 25+ designs" }));
+      secs.slice(1).forEach(function (x) { d.appendChild(sec(x, false)); }); root.appendChild(d);
+    } else secs.forEach(function (x) { root.appendChild(sec(x, false)); });
+    return root;
+  }
+  function tplOf(v) { for (var i = 0; i < TEMPLATES.length; i++) if (TEMPLATES[i][0] === v) return v; return "classic"; }
+  function extraFields(inv, cb) {
+    return h("div", null,
+      h("div", { class: "row2" },
+        field("Discount type", selectEl([["pct", "Percent (%)"], ["flat", "Flat amount"]], inv.discType, function (v) { inv.discType = v; cb(); })),
+        field("Discount (optional)", inp(inv, "discVal", cb, { type: "number", min: "0", step: "0.01", inputmode: "decimal", placeholder: "0" }))),
+      field("Late fee per day, in % (optional)", inp(inv, "lateRate", cb, { type: "number", min: "0", step: "0.01", inputmode: "decimal", placeholder: "e.g. 0.5" }), "Added automatically after the due date until the invoice is paid."),
+      field("Invoice language", selectEl([["en", "English"], ["hi", "हिन्दी (Hindi)"]], inv.lang, function (v) { inv.lang = v; cb(); })));
+  }
+  function taxFields(obj, cb) {
+    var box = h("div");
+    function draw() {
+      box.textContent = "";
+      box.appendChild(field("GST rate", selectEl(TAXES, obj.taxSel, function (v) { obj.taxSel = v; draw(); cb(); })));
+      box.appendChild(field("Client state", selectEl([["0", "Same state (CGST + SGST)"], ["1", "Other state (IGST)"]], obj.igst ? "1" : "0", function (v) { obj.igst = v === "1"; draw(); cb(); })));
+      if (obj.taxSel === "custom") {
+        box.appendChild(field("Custom rate in %", inp(obj, "taxCustom", cb, { type: "number", min: "0", max: "100", step: "0.01", inputmode: "decimal", placeholder: "e.g. 3" })));
+      }
+    }
+    draw();
+    return box;
+  }
+  function payFields(pay, cb, inInv) {
+    var box = h("div");
+    function draw() {
+      box.textContent = "";
+      box.appendChild(field("Payment method", selectEl(
+        [["none", "Don't show payment details"], ["upi", "UPI"], ["bank", "Bank transfer"], ["other", "Other"]],
+        pay.method, function (v) { pay.method = v; draw(); cb(); })));
+      if (pay.method === "upi") {
+        box.appendChild(field("UPI ID", inp(pay, "upi", cb, { placeholder: "name@bank", autocomplete: "off" })));
+        var profImg = (store.profile && store.profile.pay && store.profile.pay.qrImg) || "";
+        if (inInv) {
+          var onv = pay.qrShow === undefined ? !!profImg : pay.qrShow, qseg = h("div", { class: "seg", role: "group", "aria-label": "QR code on this invoice" });
+          [[false, "Off"], [true, "On"]].forEach(function (o) { qseg.appendChild(h("button", { type: "button", "aria-pressed": onv === o[0] ? "true" : "false", onclick: function () { pay.qrShow = o[0]; draw(); cb(); } }, o[1])); });
+          box.appendChild(h("div", { class: "field" }, h("span", { style: "display:block;font-weight:700;margin-bottom:6px", text: "QR code on this invoice" }), qseg,
+            h("p", { class: "hint", style: "margin:8px 0 0", text: profImg ? "Uses the QR image saved in your Business profile." : "Zivo makes a QR from your UPI ID. To use your own image, add it once in Business profile." })));
+        } else {
+          var fin = h("input", { type: "file", accept: "image/*", style: "display:none", "aria-label": "Upload your QR image", onchange: function (e) {
+            var fl = e.target.files && e.target.files[0]; if (!fl) return; var rd = new FileReader();
+            rd.onload = function () { var im = new Image(); im.onload = function () { var k = Math.min(1, 360 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); pay.qrImg = c.toDataURL("image/png"); draw(); cb(); }; im.src = rd.result; };
+            rd.readAsDataURL(fl); } });
+          box.appendChild(h("div", { class: "field" }, h("span", { style: "display:block;font-weight:700;margin-bottom:6px", text: "Payment QR code" }),
+            pay.qrImg ? h("img", { src: pay.qrImg, alt: "Your QR", style: "width:72px;height:72px;display:block;margin-bottom:8px;border:1px solid var(--line);border-radius:8px;background:#fff" }) : null, fin,
+            h("button", { class: "btn small", type: "button", onclick: function () { fin.click(); } }, pay.qrImg ? "↑ Replace" : "↑ Upload"),
+            pay.qrImg ? h("button", { class: "btn small", type: "button", style: "margin-left:6px", "aria-label": "Remove QR image", onclick: function () { pay.qrImg = ""; draw(); cb(); } }, "✕") : null,
+            h("p", { class: "hint", style: "margin:8px 0 0", text: "Upload the QR from your UPI app. It appears on invoices that have the QR switched on. Without an image, Zivo creates one from your UPI ID." })));
+        }
+      } else if (pay.method === "bank") {
+        box.appendChild(field("Account holder name", inp(pay, "holder", cb)));
+        box.appendChild(field("Bank name", inp(pay, "bank", cb)));
+        box.appendChild(h("div", { class: "row2" },
+          field("Account number", inp(pay, "acc", cb, { inputmode: "numeric", autocomplete: "off" })),
+          field("IFSC code", inp(pay, "ifsc", cb, { autocomplete: "off" }))));
+      } else if (pay.method === "other") {
+        box.appendChild(field("Payment instructions", area(pay, "other", cb, { placeholder: "PayPal, cheque, cash..." })));
+      }
+    }
+    draw();
+    return box;
+  }
+
+  /* ---------- confetti ---------- */
+  function confetti() {
+    if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var c = document.createElement("canvas");
+    c.className = "confetti"; c.width = window.innerWidth; c.height = window.innerHeight;
+    document.body.appendChild(c);
+    var ctx = c.getContext("2d");
+    if (!ctx) { c.remove(); return; }
+    var colors = ["#2563eb", "#2dd4bf", "#fbbf24", "#f87171", "#a78bfa"], ps = [], i;
+    for (i = 0; i < 150; i++) {
+      ps.push({ x: c.width / 2 + (Math.random() - 0.5) * 160, y: c.height * 0.38, vx: (Math.random() - 0.5) * 14,
+        vy: -Math.random() * 13 - 4, s: Math.random() * 7 + 4, r: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.4,
+        c: colors[Math.floor(Math.random() * colors.length)] });
+    }
+    var t = 0;
+    (function frame() {
+      t++;
+      ctx.clearRect(0, 0, c.width, c.height);
+      ps.forEach(function (p) {
+        p.vy += 0.35; p.x += p.vx; p.y += p.vy; p.vx *= 0.99; p.r += p.vr;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c;
+        ctx.fillRect(-p.s / 2, -p.s / 3, p.s, p.s * 0.6); ctx.restore();
+      });
+      if (t < 150) requestAnimationFrame(frame); else c.remove();
+    })();
+  }
+
+  /* ---------- invoice paper (what clients see) ---------- */
+  var L = {
+    en: { invoice: "INVOICE", receipt: "RECEIPT", billedTo: "Billed to", issued: "Issued", due: "Due", paidOn: "Paid on", desc: "Description", qty: "Qty", rate: "Rate", amount: "Amount",
+      subtotal: "Subtotal", discount: "Discount", gst: "GST", lateFee: "Late fee", amtDue: "Amount due", amtPaid: "Amount paid", howPay: "How to pay", notes: "Notes",
+      upi: "UPI ID", accName: "Account name", bank: "Bank", accNo: "Account no.", ifsc: "IFSC", paid: "PAID" },
+    hi: { invoice: "बिल", receipt: "रसीद", billedTo: "ग्राहक", issued: "जारी तिथि", due: "देय तिथि", paidOn: "भुगतान तिथि", desc: "विवरण", qty: "मात्रा", rate: "दर", amount: "राशि",
+      subtotal: "उप-योग", discount: "छूट", gst: "जीएसटी", lateFee: "विलंब शुल्क", amtDue: "देय राशि", amtPaid: "भुगतान की गई राशि", howPay: "भुगतान कैसे करें", notes: "टिप्पणी",
+      upi: "यूपीआई आईडी", accName: "खाता धारक", bank: "बैंक", accNo: "खाता संख्या", ifsc: "आईएफ़एससी", paid: "भुगतान हो गया" }
+  };
+var _zl = {};
+  function zivoLogoPng(word) {
+    if (_zl[word]) return _zl[word];
+    var c = document.createElement("canvas"), k = word ? 4 : 8, x;
+    c.width = (word ? 120 : 32) * k; c.height = 32 * k; x = c.getContext("2d"); x.scale(k, k);
+    x.fillStyle = "#1f6b4a"; x.beginPath(); x.moveTo(8, 0); x.arcTo(32, 0, 32, 32, 8); x.arcTo(32, 32, 0, 32, 8); x.arcTo(0, 32, 0, 0, 8); x.arcTo(0, 0, 32, 0, 8); x.closePath(); x.fill();
+    x.strokeStyle = "#ffffff"; x.lineWidth = 3.2; x.lineCap = "round"; x.lineJoin = "round"; x.beginPath(); x.moveTo(9, 10.5); x.lineTo(23, 10.5); x.lineTo(9, 21.5); x.lineTo(23, 21.5); x.stroke();
+    if (word) { x.fillStyle = "#1f6b4a"; x.font = "800 24px 'Plus Jakarta Sans', Arial, sans-serif"; x.fillText("zivo", 42, 24); }
+    _zl[word] = c.toDataURL("image/png"); return _zl[word];
+  }
+  function renderPaper(inv, el) {
+    var p = store.profile, t = totals(inv), cur = inv.currency, st = effStatus(inv), lang = inv.lang === "hi" ? "hi" : "en", receipt = receiptMode && inv.status === "paid";
+    function T(k) { return L[lang][k]; }
+    el.textContent = "";
+    el.style.setProperty("--logo-w", (p.logoW || { s: 100, m: 150, l: 240 }[p.logoSize || "m"]) + "px");
+    el.className = "paper tpl-" + tplOf(p.tpl) + tplExtra(tplOf(p.tpl)) + " logo-" + (p.logoPos || "left") + " logosz-" + (p.logoSize || "m") + " lang-" + lang;
+    if (!isPro()) { el.appendChild(h("div", { class: "zwm", "aria-hidden": "true" }, h("img", { src: zivoLogoPng(true), alt: "" }))); el.appendChild(h("div", { class: "zmade" }, h("img", { src: zivoLogoPng(false), alt: "", width: "16", height: "16" }), "Made with Zivo")); }
+    if (p.wm && p.name) el.appendChild(h("div", { class: "pp-wm", "aria-hidden": "true", text: p.name }));
+
+    var brand = h("div", { class: "pp-brand" });
+    if (p.logo && p.logo.indexOf("data:image/") === 0) brand.appendChild(h("img", { class: "pp-logo", src: p.logo, alt: "Business logo" }));
+    var fromText = [p.details || "", p.email || "", p.phone ? "+91 " + p.phone : ""].filter(Boolean).join("\n") + (p.gstin ? ((p.details || p.email || p.phone) ? "\n" : "") + "GSTIN: " + p.gstin : "");
+    brand.appendChild(h("div", null,
+      h("div", { class: "pp-biz" + (p.name ? "" : " empty"), text: p.name || "Your business name" }),
+      p.tagline ? h("div", { class: "pp-tag", text: p.tagline }) : null,
+      fromText ? h("div", { class: "pp-from pre", text: fromText }) : null));
+
+    el.appendChild(h("div", { class: "pp-head" }, brand,
+      h("div", { class: "pp-title" },
+        h("div", { class: "word", text: receipt ? T("receipt") : (p.gstin && lang === "en" ? "TAX INVOICE" : T("invoice")) }),
+        h("div", { class: "pp-num", text: inv.number || "-" }),
+        st === "paid" ? h("div", { class: "paid-mark", text: T("paid") }) : null)));
+
+    el.appendChild(h("div", { class: "pp-rule" }));
+
+    el.appendChild(h("div", { class: "pp-meta" },
+      h("div", null, h("div", { class: "k", text: T("billedTo") }),
+        h("div", { class: "strong" + (inv.client.name ? "" : " empty"), text: inv.client.name || "Client name" }),
+        inv.client.details ? h("div", { class: "pre", text: inv.client.details }) : null),
+      h("div", null, h("div", { class: "k", text: T("issued") }), h("div", { class: "strong", text: fmtDate(inv.issue) })),
+      h("div", null, h("div", { class: "k", text: receipt ? T("paidOn") : T("due") }), h("div", { class: "strong", text: fmtDate(receipt && inv.paidAt ? inv.paidAt : inv.due) }))));
+
+    var tbody = h("tbody");
+    inv.items.forEach(function (it) {
+      var amount = num(it.q) * num(it.r);
+      tbody.appendChild(h("tr", null,
+        h("td", { class: it.d ? "" : "empty", text: it.d || "Item description" }),
+        h("td", { class: "n", text: String(num(it.q)) }),
+        h("td", { class: "n", text: money(num(it.r), cur) }),
+        h("td", { class: "n", text: money(amount, cur) })));
+    });
+    el.appendChild(h("div", { class: "pp-scroll" },
+      h("table", { class: "pp-table" },
+        h("thead", null, h("tr", null, h("th", { text: T("desc") }), h("th", { class: "n", text: T("qty") }), h("th", { class: "n", text: T("rate") }), h("th", { class: "n", text: T("amount") }))),
+        tbody)));
+
+    el.appendChild(h("div", { class: "pp-fill", "aria-hidden": "true" }));
+    var totalsBox = h("div", { class: "pp-totals" });
+    function tl(k, v, c) { totalsBox.appendChild(h("div", { class: "l" + (c ? " " + c : "") }, h("span", { text: k }), h("span", { text: v }))); }
+    if (t.rate > 0 || t.disc > 0 || t.late > 0) tl(T("subtotal"), money(t.sub, cur));
+    if (t.disc > 0) tl(T("discount"), "- " + money(t.disc, cur));
+    if (t.rate > 0 && inv.igst) tl("IGST (" + t.rate + "%)", money(t.tax, cur), "tax");
+    else if (t.rate > 0 && (tplOf(p.tpl) === "gst" || p.gstin)) { tl("CGST (" + t.rate / 2 + "%)", money(t.tax / 2, cur), "tax"); tl("SGST (" + t.rate / 2 + "%)", money(t.tax / 2, cur), "tax"); }
+    else if (t.rate > 0) tl(T("gst") + " (" + t.rate + "%)", money(t.tax, cur), "tax");
+    if (t.late > 0) tl(T("lateFee") + " (" + t.lateDays + "d)", money(t.late, cur));
+    el.appendChild(totalsBox);
+    el.appendChild(h("div", { class: "pp-due" }, h("span", { class: "k", text: st === "paid" ? T("amtPaid") : T("amtDue") }), h("span", { class: "v", text: money(t.total, cur) })));
+
+    var foot = h("div", { class: "pp-foot" }), pay = receipt ? emptyPay() : inv.pay, dl = null;
+    function row(k, v) { if (v && String(v).trim()) { dl = dl || h("dl", { class: "pp-dl" }); dl.appendChild(h("dt", { text: k })); dl.appendChild(h("dd", { text: v })); } }
+    if (pay.method === "upi") row(T("upi"), pay.upi);
+    if (pay.method === "bank") { row(T("accName"), pay.holder); row(T("bank"), pay.bank); row(T("accNo"), pay.acc); row(T("ifsc"), pay.ifsc); }
+    var qrNode = null, profImg2 = (store.profile.pay && store.profile.pay.qrImg) || pay.qrImg || "", showQr = pay.qrShow === undefined ? !!profImg2 : pay.qrShow, qsrc = "";
+    if (pay.method === "upi" && showQr && st !== "paid") {
+      if (profImg2) qsrc = profImg2;
+      else if (pay.upi && typeof qrcode === "function") { try { var qq = qrcode(0, "M"); qq.addData("upi://pay?pa=" + encodeURIComponent(pay.upi) + "&pn=" + encodeURIComponent(p.name || "") + "&am=" + t.total.toFixed(2) + "&cu=INR&tn=" + encodeURIComponent(inv.number || "")); qq.make(); qsrc = qq.createDataURL(4, 0); } catch (e) { qsrc = ""; } }
+    }
+    if (qsrc) qrNode = h("div", { class: "pp-qrbox" }, h("img", { class: "pp-qr", src: qsrc, alt: "UPI QR code" }), h("div", { class: "pp-qrcap", text: "Scan to pay" }));
+    if (dl) foot.appendChild(h("div", { class: "box" }, h("div", { class: "k", text: T("howPay") }), h("div", { class: "pp-payrow" }, h("div", { style: "min-width:0;flex:1" }, dl), qrNode)));
+    if (pay.method === "other" && pay.other.trim()) foot.appendChild(h("div", { class: "box" }, h("div", { class: "k", text: T("howPay") }), h("div", { class: "pre", text: pay.other })));
+    if (inv.notes.trim()) foot.appendChild(h("div", null, h("div", { class: "k", text: T("notes") }), h("div", { class: "pre", text: inv.notes })));
+    if (p.footer && p.footer.trim()) foot.appendChild(h("div", { class: "pp-copy", text: p.footer.trim() }));
+    else foot.appendChild(h("div", { class: "pp-copy", text: lang === "hi" ? "धन्यवाद" : "Thank you for your business." }));
+    el.appendChild(foot);
+  }
+
+  /* ---------- navigation ---------- */
+  function leaveEditor() {
+    var inv = getInv(currentId), p = Promise.resolve();
+    if (inv) {
+      if (isBlank(inv)) p = removeInvoice(inv);
+      else { upsertClient(inv); p = saveInvoiceNow(inv); }
+    }
+    currentId = null;
+    return p;
+  }
+  function go(v, id) {
+    if (view === "edit") leaveEditor();
+    view = v; if (id) currentId = id;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------- dashboard ---------- */
+  function sumText(list) {
+    var by = {};
+    list.forEach(function (i) { by[i.currency] = (by[i.currency] || 0) + totals(i).total; });
+    var keys = Object.keys(by);
+    if (!keys.length) return money(0, store.profile.currency);
+    return keys.map(function (k) { return money(by[k], k); }).join(" + ");
+  }
+  function dueInfo(inv) {
+    var st = effStatus(inv), d = daysUntil(inv.due);
+    if (st === "paid") return { m: "Paid " + fmtDate(inv.paidAt || inv.due), s: "Was due " + fmtDate(inv.due) };
+    if (st === "draft") return { m: "Due " + fmtDate(inv.due), s: "Not sent yet" };
+    var m;
+    if (d > 1) m = "Due in " + d + " days"; else if (d === 1) m = "Due tomorrow"; else if (d === 0) m = "Due today";
+    else m = plural(-d, "day") + " overdue";
+    return { m: m, s: fmtDate(inv.due) };
+  }
+  function markPaid(inv) {
+    var lt = totals(inv); inv.lateFeePaid = lt.late; inv.lateDaysPaid = lt.lateDays;
+    inv.status = "paid"; inv.paidAt = todayISO(); saveInvoiceNow(inv); confetti();
+    toast("Invoice " + inv.number + " marked as paid.");
+  }
+
+  function csvCell(v) {
+    v = String(v === undefined || v === null ? "" : v);
+    if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;
+    return '"' + v.replace(/"/g, '""') + '"';
+  }
+  function exportCsv() {
+    var r2 = function (x) { return Math.round(x * 100) / 100; };
+    var rows = [["Invoice no", "Client", "Issue date", "Due date", "Status", "Currency", "Subtotal", "Discount", "GST %", "GST amount", "Late fee", "Total", "Paid on"]];
+    store.invoices.slice().sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); }).forEach(function (i) {
+      var t = totals(i);
+      rows.push([i.number, i.client.name, i.issue, i.due, effStatus(i), i.currency, r2(t.sub), r2(t.disc), t.rate, r2(t.tax), r2(t.late), r2(t.total), i.paidAt || ""]);
+    });
+    var csv = "\ufeff" + rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n");
+    var url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    var a = h("a", { href: url, download: "zivo-invoices-" + todayISO() + ".csv" });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    toast("CSV downloaded. Open it in Excel or Google Sheets.");
+  }
+  function renderDash() {
+    var root = $("#app"); root.textContent = "";
+    var invs = store.invoices.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    var monthKey = todayISO().slice(0, 7);
+    var received = invs.filter(function (i) { return i.status === "paid" && (i.paidAt || "").slice(0, 7) === monthKey; });
+    var owed = invs.filter(function (i) { return i.status === "sent"; });
+    var overdue = owed.filter(function (i) { return effStatus(i) === "overdue"; });
+    var soon = owed.filter(function (i) { var d = daysUntil(i.due); return d >= 0 && d <= 3; });
+
+    root.appendChild(h("div", { class: "page-head" },
+      h("div", null, h("h1", { text: "Your invoices" }), h("p", { class: "sub", text: "See what you're owed and who to chase." })),
+      store.invoices.length ? h("button", { class: "btn small", type: "button", onclick: exportCsv }, icon("download", 15), "Export CSV") : null));
+
+    if (overdue.length || soon.length) {
+      var ul = h("ul");
+      overdue.slice(0, 3).forEach(function (i) { ul.appendChild(h("li", { text: i.number + " for " + (i.client.name || "a client") + " is " + plural(-daysUntil(i.due), "day") + " overdue." })); });
+      soon.slice(0, 3).forEach(function (i) {
+        var d = daysUntil(i.due);
+        ul.appendChild(h("li", { text: i.number + " for " + (i.client.name || "a client") + (d === 0 ? " is due today." : d === 1 ? " is due tomorrow." : " is due in " + d + " days.") }));
+      });
+      root.appendChild(h("div", { class: "reminder " + (overdue.length ? "bad" : "soon"), role: "status" },
+        icon(overdue.length ? "alert" : "clock", 20),
+        h("div", null,
+          h("div", { class: "rtitle", text: overdue.length ? "Payments are late" : "Payments due soon" }),
+          ul)));
+    }
+
+    root.appendChild(h("div", { class: "stats" },
+      h("div", { class: "stat s1" }, h("div", { class: "lbl", text: "Received this month" }), h("div", { class: "val", text: sumText(received) }), h("div", { class: "note", text: plural(received.length, "paid invoice") })),
+      h("div", { class: "stat s2" }, h("div", { class: "lbl", text: "Still owed to you" }), h("div", { class: "val", text: sumText(owed) }), h("div", { class: "note", text: plural(owed.length, "unpaid invoice") })),
+      h("div", { class: "stat s3" }, h("div", { class: "lbl", text: "Overdue" }), h("div", { class: "val", text: sumText(overdue) }), h("div", { class: "note", text: plural(overdue.length, "late invoice") }))));
+
+    function cname(i) { return ((i.client && i.client.name) || "").trim(); }
+    var names = {}; invs.forEach(function (i) { var n = cname(i); if (n) { var k = n.toLowerCase(); names[k] = names[k] || { name: n, count: 0 }; names[k].count++; } });
+    if (clientFilter !== "all" && !names[clientFilter]) clientFilter = "all";
+    var base = invs.filter(function (i) { return clientFilter === "all" || cname(i).toLowerCase() === clientFilter; });
+    var counts = { all: base.length, draft: 0, sent: 0, overdue: 0, paid: 0 };
+    base.forEach(function (i) { counts[effStatus(i)]++; });
+    var chips = h("div", { class: "filters", role: "group", "aria-label": "Filter invoices" });
+    [["all", "All"], ["draft", "Draft"], ["sent", "Sent"], ["overdue", "Overdue"], ["paid", "Paid"]].forEach(function (f) {
+      chips.appendChild(h("button", { class: "chip", type: "button", "aria-pressed": filter === f[0] ? "true" : "false",
+        onclick: function () { filter = f[0]; renderDash(); } }, f[1] + " (" + counts[f[0]] + ")"));
+    });
+    var nk = Object.keys(names).sort(function (a, b) { return names[a].name.localeCompare(names[b].name); });
+    if (nk.length > 1) {
+      var csel = selectEl([["all", "All clients (" + invs.length + ")"]].concat(nk.map(function (k) { return [k, names[k].name + " (" + names[k].count + ")"]; })), clientFilter, function (v) { clientFilter = v; renderDash(); });
+      csel.setAttribute("aria-label", "Show invoices for one client"); csel.style.width = "auto"; csel.style.maxWidth = "100%";
+      root.appendChild(h("div", { style: "margin:4px 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, h("strong", { text: "Client" }), csel));
+    }
+    root.appendChild(chips);
+
+    var shown = base.filter(function (i) { return filter === "all" || effStatus(i) === filter; });
+    var list = h("div", { class: "list" });
+    if (!shown.length) {
+      list.appendChild(invs.length
+        ? h("div", { class: "blank" }, h("h2", { text: "Nothing here" }), h("p", { text: "No invoices match this filter." }))
+        : h("div", { class: "blank" }, h("h2", { text: "Create your first invoice" }), h("p", { text: "Add a client, a few items, and download a PDF in about a minute." }),
+            h("button", { class: "btn primary", type: "button", onclick: newAndOpen }, icon("plus", 16), "New invoice")));
+    }
+    shown.forEach(function (inv) {
+      var st = effStatus(inv), di = dueInfo(inv);
+      var del = h("button", { class: "btn small ghost danger", type: "button", "aria-label": "Delete invoice " + inv.number }, icon("trash", 15));
+      var armed = false, timer;
+      del.addEventListener("click", function () {
+        if (!armed) {
+          armed = true; del.textContent = "Click again to delete"; del.classList.add("armed");
+          timer = setTimeout(function () { armed = false; del.textContent = ""; del.appendChild(icon("trash", 15)); del.classList.remove("armed"); }, 3000);
+        } else {
+          clearTimeout(timer);
+          removeInvoice(inv); renderDash();
+        }
+      });
+      var actions = h("div", { class: "r-actions" },
+        h("button", { class: "btn small", type: "button", onclick: function () { go("edit", inv.id); } }, "Open"),
+        (st === "sent" || st === "overdue") ? h("button", { class: "btn small mint", type: "button", onclick: function () { markPaid(inv); renderDash(); } }, icon("check", 15), "Mark paid") : null,
+        (st === "sent" || st === "overdue") ? h("button", { class: "btn small", type: "button", onclick: function () { remindWA(inv); } }, icon("send", 15), "Remind") : null,
+        del);
+      list.appendChild(h("div", { class: "inv-row" },
+        h("div", { class: "r-info" },
+          h("button", { class: "linkish r-num", type: "button", onclick: function () { go("edit", inv.id); }, text: inv.number || "Invoice" }),
+          h("div", { class: "r-client", text: inv.client.name || "No client yet" })),
+        h("div", { class: "r-due" }, h("div", { class: "m", text: di.m }), h("div", { class: "s", text: di.s })),
+        h("div", { class: "r-amount", text: money(totals(inv).total, inv.currency) }),
+        h("div", { class: "r-pill" }, pill(st)),
+        actions));
+    });
+    root.appendChild(list);
+    root.appendChild(h("p", { class: "footnote", text: "Your invoices are saved to your account, so you can open them on any device." }));
+  }
+
+  /* ---------- editor ---------- */
+  function newAndOpen() {
+    var ym = todayISO(0).slice(0, 7);
+    if (!isPro() && store.invoices.filter(function (x) { return (x.issue || "").slice(0, 7) === ym; }).length >= 5) { toast("The free plan includes 5 invoices a month. Upgrade to Pro for unlimited."); setTimeout(function () { window.location.href = "pricing.html"; }, 1200); return; }
+    var inv = createInvoice(); view = view === "edit" ? "edit" : view; go("edit", inv.id); }
+
+  /* ---------- share and remind (WhatsApp / email) ---------- */
+  function shareText(inv) {
+    var t = totals(inv), d = inv.due ? daysUntil(inv.due) : 99, amt = money(t.total, inv.currency), n = inv.number || "invoice", dt = inv.due ? fmtDate(inv.due) : "";
+    var line;
+    if (inv.status === "paid") line = "Thank you! We have received your payment of " + amt + " for " + n + ".";
+    else if (inv.status === "sent" && d < 0) line = "This is a reminder that " + n + " for " + amt + " was due on " + dt + " (" + plural(-d, "day") + " ago). Please pay at the earliest.";
+    else if (inv.status === "sent" && d <= 3) line = "Friendly reminder: " + n + " for " + amt + " is due " + (d === 0 ? "today" : d === 1 ? "tomorrow" : "in " + d + " days") + " (" + dt + ").";
+    else line = "Please find " + n + " for " + amt + (dt ? ", due on " + dt : "") + ".";
+    var p = inv.pay || {}, pl = "";
+    if (inv.status !== "paid") {
+      if (p.method === "upi" && p.upi) pl = "\n\nPay by UPI: " + p.upi;
+      else if (p.method === "bank" && p.acc) pl = "\n\nBank: " + (p.holder || "") + ", A/c " + p.acc + ", IFSC " + (p.ifsc || "");
+    }
+    var cu = inv.currency, its = inv.items.filter(function (i) { return i.d || num(i.q) * num(i.r) > 0; }).map(function (i) { return "- " + (i.d || "Item") + " (" + num(i.q) + " x " + money(num(i.r), cu) + "): " + money(num(i.q) * num(i.r), cu); }).join("\n");
+    var tx = t.rate > 0 ? (inv.igst ? "IGST" : "GST") + " (" + t.rate + "%): " + money(t.tax, cu) : "";
+    var bd = "\n\n" + its + "\n\nSubtotal: " + money(t.sub, cu) + (t.disc > 0 ? "\nDiscount: -" + money(t.disc, cu) : "") + (tx ? "\n" + tx : "") + (t.late > 0 ? "\nLate fee: " + money(t.late, cu) : "") + "\n*" + (inv.status === "paid" ? "Amount paid" : "Total due") + ": " + amt + "*";
+    return "Hi " + (inv.client.name || "") + ",\n\n" + line + bd + pl + "\n\nThe PDF is attached.\n\nThank you,\n" + (store.profile.name || "");
+  }
+  function makePdf(inv) {
+    if (!window.html2pdf) return Promise.reject(new Error("pdf library missing"));
+    var el = h("div"); renderPaper(inv, el); el.classList.add("pdfmode");
+    window.scrollTo(0, 0);
+    var host = h("div", { class: "pdf-host" }); host.appendChild(el); document.body.appendChild(host);
+    var name = ((inv.client && inv.client.name ? inv.client.name + "_" : "") + (inv.number || "invoice")).replace(/[^\w\-]+/g, "_") + ".pdf";
+    function clean() { if (host.parentNode) host.parentNode.removeChild(host); }
+    return html2pdf().set({ margin: 0, pagebreak: { mode: ["css", "legacy"], avoid: [".pp-due", ".pp-totals", ".pp-foot", "tr"] }, filename: name, image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", scrollX: 0, scrollY: 0, x: 0, y: 0, windowWidth: 794 }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" } })
+      .from(el).outputPdf("blob").then(function (b) { clean(); return new File([b], name, { type: "application/pdf" }); }, function (e) { clean(); throw e; });
+  }
+  function saveFile(f) {
+    var u = URL.createObjectURL(f), a = document.createElement("a");
+    a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 1500);
+  }
+  function downloadPdf(inv) {
+    toast("Preparing PDF...");
+    makePdf(inv).then(saveFile, function () { window.print(); });
+  }
+  function waNumber(inv) { var ph = String((inv.client && inv.client.phone) || "").replace(/\D/g, ""); if (ph.length === 10) ph = "91" + ph; return ph.length >= 11 ? ph : ""; }
+  function waUrl(inv, text) { return "https://wa.me/" + waNumber(inv) + "?text=" + encodeURIComponent(text); }
+  function remindWA(inv) {
+    var text = shareText(inv).replace("\n\nThe PDF is attached.", "");
+    window.open(waUrl(inv, text), "_blank", "noopener");
+    toast(waNumber(inv) ? "WhatsApp opened with your reminder." : "WhatsApp opened. Pick the client and send.");
+  }
+  function shareInvoice(inv, via) {
+    var text = shareText(inv);
+    if (via === "wa" && waNumber(inv)) {
+      window.open(waUrl(inv, text), "_blank", "noopener");
+      toast("WhatsApp opened with your message. Saving the PDF to attach...");
+      makePdf(inv).then(function (f) { saveFile(f); toast("PDF saved. In the chat, tap the paper-clip and attach it, then send."); }, function () { toast("Could not make the PDF. Try Download PDF."); });
+      return;
+    }
+    toast("Preparing PDF...");
+    makePdf(inv).then(function (f) {
+      var direct = false;
+      if (!direct && navigator.canShare && navigator.canShare({ files: [f] })) {
+        try { if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () {}); } catch (x) { /* ignore */ }
+        return navigator.share({ files: [f], title: inv.number || "Invoice" }).then(function () { toast("PDF shared. Your message is copied: paste it in the chat."); }, function (e) { if (!e || e.name !== "AbortError") throw e; });
+      }
+      saveFile(f);
+      if (via === "wa") {
+        window.open(waUrl(inv, text), "_blank", "noopener");
+        toast("PDF saved. WhatsApp opened: pick the client, attach the PDF and send.");
+      } else {
+        var sub = (inv.status === "paid" ? "Payment received: " : "Invoice ") + (inv.number || "") + " from " + (store.profile.name || "");
+        var mu = mailUrl((inv.client.email || "").trim(), sub, text); if (mu.indexOf("mailto:") === 0) window.location.href = mu; else window.open(mu, "_blank", "noopener");
+        toast("PDF saved. In your email, attach the PDF (paper-clip) and send.");
+      }
+    }).catch(function (e) { console.error(e); toast("Could not make the PDF. Try Download PDF."); });
+  }
+  function openWA(inv) { shareInvoice(inv, "wa"); }
+  function openMail(inv) { shareInvoice(inv, "mail"); }
+  function renderEditor() {
+    var inv = getInv(currentId);
+    if (!inv) { view = "dash"; render(); return; }
+    var root = $("#app"); root.textContent = "";
+    var paper = h("article", { class: "paper", "aria-label": "Invoice preview" });
+    var title = h("h1", { text: inv.number || "Invoice" });
+    var pillHost = h("span"), actionHost = h("div", { class: "pv-actions" });
+
+    function updatePreview() { title.textContent = inv.number || "Invoice"; renderPaper(inv, paper); }
+    function changed() { scheduleInvoice(inv); updatePreview(); }
+
+    function refreshStatus() {
+      var st = effStatus(inv);
+      pillHost.textContent = ""; pillHost.appendChild(pill(st));
+      actionHost.textContent = "";
+      actionHost.appendChild(h("button", { class: "btn", type: "button", onclick: function () { downloadPdf(inv); } }, icon("download", 16), "Download PDF"));
+
+      var rem = st === "overdue" || (inv.status === "sent" && daysUntil(inv.due) <= 3);
+      actionHost.appendChild(h("button", { class: "btn", type: "button", onclick: function () { openWA(inv); } }, icon("send", 16), rem ? "Remind on WhatsApp" : "WhatsApp"));
+      actionHost.appendChild(h("button", { class: "btn", type: "button", onclick: function () { openMail(inv); } }, icon("send", 16), rem ? "Remind by email" : "Email"));
+      if (inv.status === "paid") actionHost.appendChild(h("button", { class: "btn", type: "button", onclick: function () { toast("Preparing receipt..."); receiptMode = true; makePdf(inv).then(function (f) { receiptMode = false; saveFile(f); }, function () { receiptMode = false; toast("Could not make the receipt PDF."); }); } }, icon("download", 16), "Download receipt"));
+      if (inv.status === "draft") {
+        actionHost.appendChild(h("button", { class: "btn primary", type: "button", onclick: function () {
+          if (!inv.client.name.trim()) { toast("Add a client name before marking as sent."); return; }
+          if (totals(inv).total <= 0) { toast("Add at least one item with a rate first."); return; }
+          upsertClient(inv); inv.status = "sent"; saveInvoiceNow(inv); refreshStatus(); updatePreview(); toast("Marked as sent. Send the PDF to your client.");
+        } }, icon("send", 16), "Mark as sent"));
+      } else if (inv.status === "sent") {
+        actionHost.appendChild(h("button", { class: "btn mint", type: "button", onclick: function () { markPaid(inv); refreshStatus(); updatePreview(); } }, icon("check", 16), "Mark as paid"));
+        actionHost.appendChild(h("button", { class: "btn ghost", type: "button", onclick: function () { inv.status = "draft"; saveInvoiceNow(inv); refreshStatus(); updatePreview(); } }, "Back to draft"));
+      } else {
+        actionHost.appendChild(h("button", { class: "btn ghost", type: "button", onclick: function () { inv.status = "sent"; inv.paidAt = ""; saveInvoiceNow(inv); refreshStatus(); updatePreview(); } }, "Mark as unpaid"));
+      }
+    }
+
+    root.appendChild(h("div", { class: "ed-head" },
+      h("button", { class: "btn small", type: "button", onclick: function () { go("dash"); } }, icon("back", 15), "Dashboard"),
+      title, pillHost, h("span", { class: "spacer" }), savedEl()));
+
+    /* client with saved-client suggestions */
+    var listId = "clientList";
+    var dl = h("datalist", { id: listId });
+    store.clients.forEach(function (c) { dl.appendChild(h("option", { value: c.name })); });
+    var detailsAuto = false;
+    var phoneEl = inp(inv.client, "phone", changed, { type: "tel", inputmode: "numeric", maxlength: "10", autocomplete: "tel-national", placeholder: "9876543210", clean: cleanPhone });
+    var emailEl = inp(inv.client, "email", changed, { type: "email", inputmode: "email", autocomplete: "email", placeholder: "name@example.com", clean: cleanEmail });
+    function lastContact(name) {
+      var key = name.trim().toLowerCase(), best = null;
+      if (!key) return null;
+      store.invoices.forEach(function (o) {
+        if (o.id === inv.id || o.client.name.trim().toLowerCase() !== key || !(o.client.phone || o.client.email)) return;
+        if (!best || (o.createdAt || 0) > (best.createdAt || 0)) best = o;
+      });
+      return best ? best.client : null;
+    }
+    var detailsEl = area(inv.client, "details", function () { detailsAuto = false; changed(); }, { placeholder: "Address, email, GSTIN", autocomplete: "off" });
+    var nameEl = h("input", { type: "text", value: inv.client.name, list: listId, placeholder: "Start typing a client name", autocomplete: "off",
+      oninput: function () {
+        inv.client.name = nameEl.value;
+        var c = findClient(nameEl.value);
+        if (c && (!inv.client.details.trim() || detailsAuto)) { inv.client.details = c.details || ""; detailsEl.value = inv.client.details; detailsAuto = true; }
+        var lc = lastContact(nameEl.value);
+        if (lc) {
+          if (!String(inv.client.phone || "").trim() && lc.phone) { inv.client.phone = lc.phone; phoneEl.value = lc.phone; }
+          if (!String(inv.client.email || "").trim() && lc.email) { inv.client.email = lc.email; emailEl.value = lc.email; }
+        }
+        changed();
+      },
+      onchange: function () { upsertClient(inv); } });
+    detailsEl.addEventListener("change", function () { upsertClient(inv); });
+
+    var itemsBox = h("div");
+    function drawItems() {
+      itemsBox.textContent = "";
+      inv.items.forEach(function (it, i) {
+        var amt = h("div", { class: "amt" });
+        function setAmt() { amt.textContent = money(num(it.q) * num(it.r), inv.currency); }
+        setAmt();
+        var node = h("div", { class: "item" },
+          field("Description", inp(it, "d", changed, { placeholder: "Logo design" })),
+          h("div", { class: "r3" },
+            field("Qty", inp(it, "q", function () { setAmt(); changed(); }, { type: "number", min: "0", step: "any", inputmode: "decimal" })),
+            field("Rate", inp(it, "r", function () { setAmt(); changed(); }, { type: "number", min: "0", step: "any", inputmode: "decimal", placeholder: "0" })),
+            amt),
+          inv.items.length > 1 ? h("button", { class: "rm", type: "button", onclick: function () { inv.items.splice(i, 1); drawItems(); changed(); } }, "Remove item") : null);
+        itemsBox.appendChild(node);
+      });
+    }
+    drawItems();
+
+    var form = h("section", { class: "panel", "aria-label": "Invoice details" },
+      h("h2", { text: "Client" }),
+      field("Client name", nameEl, store.clients.length ? "Pick a saved client from the list to fill their details." : "Clients you use are saved for next time."),
+      dl,
+      field("Client details", detailsEl),
+      h("div", { class: "row2" },
+        field("Client WhatsApp number", phoneEl),
+        field("Client email", emailEl)),
+      h("h2", { text: "Invoice" }),
+      h("div", { class: "row2" },
+        field("Invoice number", inp(inv, "number", changed)),
+        field("Currency", selectEl(CURRENCIES, inv.currency, function (v) { inv.currency = v; drawItems(); changed(); }))),
+      h("div", { class: "row2" },
+        field("Issue date", inp(inv, "issue", changed, { type: "date" })),
+        field("Due date", inp(inv, "due", function () { changed(); refreshStatus(); }, { type: "date" }))),
+      h("h2", { text: "Items" }),
+      itemsBox,
+      h("button", { class: "btn small", type: "button", onclick: function () { inv.items.push({ d: "", q: 1, r: "" }); drawItems(); changed(); } }, icon("plus", 15), "Add item"),
+      h("h2", { text: "GST" }),
+      taxFields(inv, changed),
+      extraFields(inv, changed),
+      h("h2", { text: "Payment details" }),
+      payFields(inv.pay, changed, true),
+      h("h2", { text: "Notes" }),
+      field("Notes for your client", area(inv, "notes", changed, { placeholder: "Thank you for your business." })));
+
+    var design = h("div", { class: "design-strip", "aria-label": "Design" }, h("h2", { text: "Design" }),
+      tplPicker(tplOf(store.profile.tpl), function (v) { store.profile.tpl = v; scheduleProfile(); updatePreview(); }, true));
+    [].forEach.call(form.querySelectorAll("h2"), function (x) { if (x.textContent === "GST" && !design.parentNode) form.insertBefore(design, x); });
+    root.appendChild(h("div", { class: "ed-grid" }, h("div", { style: "min-width:0" }, form), h("div", { class: "pv-col" }, actionHost, paper)));
+    refreshStatus();
+    updatePreview();
+  }
+
+  /* ---------- business profile ---------- */
+  function resizeLogo(file, done) {
+    if (!file || !/^image\//.test(file.type)) { toast("Choose an image file (PNG or JPG)."); return; }
+    var reader = new FileReader();
+    reader.onerror = function () { toast("That image could not be read."); };
+    reader.onload = function () {
+      var img = new Image();
+      img.onerror = function () { toast("That image could not be read. Try a PNG or JPG."); };
+      img.onload = function () {
+        var w = img.width, hh = img.height;
+        if (!w || !hh) { toast("That image could not be read. Try a PNG or JPG."); return; }
+        var s = Math.min(1, 300 / Math.max(w, hh));
+        w = Math.round(w * s); hh = Math.round(hh * s);
+        var c = document.createElement("canvas"); c.width = w; c.height = hh;
+        c.getContext("2d").drawImage(img, 0, 0, w, hh);
+        var url = c.toDataURL("image/png");
+        if (url.length > 220000) url = c.toDataURL("image/jpeg", 0.85);
+        done(url);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function renderProfile() {
+    var root = $("#app"); root.textContent = "";
+    var p = store.profile;
+    function changed() { scheduleProfile(); }
+
+    var logoPrev = h("div", { class: "logo-prev" });
+    var logoBtns = h("div");
+    function drawLogo() {
+      logoPrev.textContent = ""; logoBtns.textContent = "";
+      if (p.logo && p.logo.indexOf("data:image/") === 0) {
+        logoPrev.appendChild(h("img", { src: p.logo, alt: "Your logo" }));
+        logoBtns.appendChild(h("button", { class: "btn small", type: "button", onclick: function () { p.logo = ""; drawLogo(); changed(); } }, "Remove logo"));
+      } else logoPrev.textContent = "No logo yet";
+    }
+    var file = h("input", { type: "file", accept: "image/*", class: "sr-only", id: "logoFile",
+      onchange: function () { resizeLogo(file.files[0], function (url) { p.logo = url; drawLogo(); changed(); toast("Logo added."); }); file.value = ""; } });
+    drawLogo();
+
+    root.appendChild(h("div", { class: "page-head" },
+      h("div", null, h("h1", { text: "Business profile" }), h("p", { class: "sub", text: "Filled in once, used on every invoice." })),
+      savedEl()));
+
+    var pvBox = h("div", { class: "prof-view" }), pvWrap = h("div", { class: "prof-prev" }, h("h2", { text: "Live preview" }), h("p", { class: "hint", text: "Your invoice with sample data. It updates as you change things." }), pvBox);
+    function drawPrev() {
+      var pp = store.profile, el = h("div");
+      var sample = normalizeInvoice({ id: "sample", number: "INV-001", status: "sent", issue: todayISO(0), due: todayISO(14), currency: pp.currency || "INR", taxSel: pp.taxSel || "18", taxCustom: pp.taxCustom || "",
+        client: { name: "Sample Client", details: "12 Client Street\nclient@example.com" }, items: [{ d: "Website design", q: 1, r: "25000" }, { d: "Logo design", q: 2, r: "5000" }], pay: pp.pay, notes: pp.notes || "Thank you for your business.", paidAt: "" });
+      renderPaper(sample, el); el.classList.add("pdfmode");
+      var w = Math.min(420, window.innerWidth - 40), k = w / 794;
+      pvBox.style.width = w + "px"; pvBox.style.height = Math.round(1123 * k) + "px";
+      el.style.transform = "scale(" + k + ")"; el.style.transformOrigin = "top left";
+      pvBox.textContent = ""; pvBox.appendChild(el);
+    }
+    drawPrev();
+    var pvT; function pvSoon() { clearTimeout(pvT); pvT = setTimeout(drawPrev, 60); }
+    root.addEventListener("input", pvSoon); root.addEventListener("change", pvSoon); root.addEventListener("click", pvSoon);
+    root.appendChild(pvWrap);
+
+    root.appendChild(h("section", { class: "panel", style: "max-width:640px", "aria-label": "Business profile" },
+      h("h2", { text: "Logo and name" }),
+      h("div", { class: "logo-box" }, logoPrev, h("div", null,
+        h("label", { class: "btn", for: "logoFile", tabindex: "0", onkeydown: function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); } } }, "Upload logo"),
+        file, h("div", { class: "hint", text: "PNG or JPG. It's shrunk automatically." }), logoBtns)),
+      (function () {
+        var cur = p.logoPos || "left", btns = [];
+        var seg = h("div", { class: "seg", role: "group", "aria-label": "Logo position" });
+        [["left", "Left"], ["center", "Centre"], ["right", "Right"]].forEach(function (o) {
+          var bt = h("button", { type: "button", "aria-pressed": o[0] === cur ? "true" : "false", onclick: function () { p.logoPos = o[0]; btns.forEach(function (x) { x.setAttribute("aria-pressed", x === bt ? "true" : "false"); }); changed(); } }, o[1]);
+          btns.push(bt); seg.appendChild(bt);
+        });
+        var w0 = p.logoW || { s: 100, m: 150, l: 240 }[p.logoSize || "m"];
+        var out = h("strong", { text: w0 + " px" });
+        var rng = h("input", { type: "range", min: "30", max: "320", step: "5", value: String(w0), "aria-label": "Logo size", style: "width:100%", oninput: function (e) { p.logoW = parseInt(e.target.value, 10); out.textContent = p.logoW + " px"; changed(); } });
+        return h("div", null,
+          h("div", { class: "field" }, h("span", { style: "display:block;font-weight:700;margin-bottom:6px", text: "Logo position" }), seg),
+          h("div", { class: "field" }, h("span", { style: "display:block;font-weight:700;margin-bottom:6px" }, "Logo size: ", out), rng));
+      })(),
+      field("Business name", inp(p, "name", changed, { placeholder: "Asha Verma Design", autocomplete: "organization" })),
+      field("Tagline (optional)", inp(p, "tagline", changed, { placeholder: "Brand design for small businesses" })),
+      h("h2", { text: "Contact details" }),
+      field("Business address", area(p, "details", changed, { placeholder: "12 MG Road, Pune" })),
+      field("Business email", inp(p, "email", changed, { type: "email", inputmode: "email", autocomplete: "email", placeholder: "asha@example.com", clean: cleanEmail })),
+      field("Business phone", inp(p, "phone", changed, { type: "tel", inputmode: "numeric", maxlength: "10", autocomplete: "tel-national", placeholder: "9876543210", clean: cleanPhone })),
+      field("GSTIN (optional)", inp(p, "gstin", changed, { placeholder: "27ABCDE1234F1Z5", autocomplete: "off" })),
+      h("h2", { text: "Defaults for new invoices" }),
+      h("div", { class: "row2" },
+        field("Currency", selectEl(CURRENCIES, p.currency, function (v) { p.currency = v; changed(); })),
+        field("Days until payment is due", inp(p, "dueDays", changed, { type: "number", min: "0", step: "1", inputmode: "numeric" }))),
+      taxFields(p, changed),
+      payFields(p.pay, changed),
+            h("h2", { text: "Invoice look" }),
+      h("div", { class: "field" }, h("h2", { text: "Design" }), tplPicker(tplOf(p.tpl), function (v) { p.tpl = v; changed(); }, true)),
+      h("label", { class: "showpw", for: "wmOn" },
+        h("input", { type: "checkbox", id: "wmOn", checked: p.wm ? "" : null, onchange: function (e) { p.wm = e.target.checked; changed(); } }),
+        "Show my business name as a faint watermark behind the invoice"),
+      field("Footer line (optional)", inp(p, "footer", changed, { placeholder: "\u00a9 2026 Asha Verma Design. All rights reserved." })),
+      field("Default note", area(p, "notes", changed, { placeholder: "Thank you for your business." })),
+      h("p", { class: "muted", text: "Changes are saved automatically." }), h("button", { class: "btn primary", type: "button", onclick: function () { Promise.resolve(saveProfileNow()).then(function () { go("dash"); }, function () { toast("Could not save. Check your connection."); }); } }, "Done")));
+  }
+
+  /* ---------- shell ---------- */
+  function applyTheme() {
+    if (store.theme) document.documentElement.setAttribute("data-theme", store.theme);
+    else document.documentElement.removeAttribute("data-theme");
+    var dark = isDark(), b = $("#themeBtn");
+    b.textContent = ""; b.appendChild(icon(dark ? "sun" : "moon", 18));
+    b.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+  }
+  function isDark() {
+    if (store.theme) return store.theme === "dark";
+    return !!(window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  /* ---------- login / signup ---------- */
+  var hashErr = /error_code=|error=access_denied/.test(window.location.hash || "");
+  var authMode = hashErr ? "forgot" : (/^#signup/.test(window.location.hash || "") ? "signup" : "login"), recovering = /type=recovery/.test((window.location.hash || "") + (window.location.search || ""));
+  function resetUrl() { return window.location.href.split("#")[0].split("?")[0]; }
+  function friendlyAuthError(e) {
+    var m = String((e && e.message) || "").toLowerCase();
+    if (m.indexOf("invalid login") >= 0) return "Wrong email or password. Please try again.";
+    if (m.indexOf("already registered") >= 0 || m.indexOf("already been registered") >= 0) return "That email already has an account. Try logging in instead.";
+    if (m.indexOf("not confirmed") >= 0) return "Please confirm your email first. Check your inbox for the link.";
+    if (m.indexOf("rate limit") >= 0 || (e && e.status === 429)) return "Too many tries. Wait a minute and try again.";
+    if (m.indexOf("different from the old") >= 0 || m.indexOf("same as the old") >= 0) return "Choose a password you have not used before.";
+    if (m.indexOf("password") >= 0) return "Use a password with at least 8 characters.";
+    if (m.indexOf("fetch") >= 0 || m.indexOf("network") >= 0) return "Can't reach the server. Check your internet and try again.";
+    return "Something went wrong: " + ((e && e.message) || "please try again.");
+  }
+  function renderAuth() {
+    var root = $("#app"); root.textContent = "";
+    var signup = authMode === "signup";
+    var msg = h("div", { role: "alert", style: "display:none" });
+    function show(text, ok) { msg.textContent = text; msg.className = "msg " + (ok ? "ok" : "err"); msg.style.display = ""; }
+    var email = h("input", { type: "email", required: "", autocomplete: "email", placeholder: "you@example.com" });
+    var pw = h("input", { type: "password", required: "", autocomplete: signup ? "new-password" : "current-password", placeholder: signup ? "At least 8 characters" : "Your password" });
+    var showpw = h("input", { type: "checkbox", id: "showpw", onchange: function () { pw.type = showpw.checked ? "text" : "password"; } });
+    var submit = h("button", { class: "btn primary", type: "submit" }, signup ? "Create my account" : "Log in");
+    var form = h("form", { novalidate: "", onsubmit: function (e) {
+      e.preventDefault();
+      var em = email.value.trim(), p = pw.value;
+      if (!/^\S+@\S+\.\S+$/.test(em)) { show("Enter a valid email address."); return; }
+      if (signup && p.length < 8) { show("Use a password with at least 8 characters."); return; }
+      if (!p) { show("Enter your password."); return; }
+      submit.disabled = true; submit.textContent = signup ? "Creating account..." : "Logging in...";
+      var call = signup ? sb.auth.signUp({ email: em, password: p }) : sb.auth.signInWithPassword({ email: em, password: p });
+      Promise.resolve(call).then(function (res) {
+        if (res.error) { show(friendlyAuthError(res.error)); }
+        else if (signup && res.data && res.data.user && res.data.user.identities && res.data.user.identities.length === 0) { show("That email already has an account. Try logging in instead."); }
+        else if (signup && res.data && !res.data.session) { show("Almost done! Check your email and click the confirmation link, then log in.", true); }
+        if (!(res.data && res.data.session)) { submit.disabled = false; submit.textContent = signup ? "Create my account" : "Log in"; }
+      }, function (err) { show(friendlyAuthError(err)); submit.disabled = false; submit.textContent = signup ? "Create my account" : "Log in"; });
+    } },
+      h("button", { class: "btn", type: "button", style: "width:100%", onclick: function () { sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: resetUrl() } }); } }, "Continue with Google"),
+      h("p", { class: "hint", style: "text-align:center;margin:10px 0", text: "or use your email" }),
+      msg,
+      field("Email", email),
+      field("Password", pw),
+      h("label", { class: "showpw", for: "showpw" }, showpw, "Show password"),
+      submit);
+
+    root.appendChild(h("div", { class: "auth" },
+      h("div", null,
+        h("h1", { text: "Make invoicing feel as good as getting paid." }),
+        h("p", { class: "lead", text: "Create clean invoices in a minute, see who has paid, and know exactly who to follow up with." }),
+        h("ul", null,
+          h("li", null, icon("check", 18), "Free to start"),
+          h("li", null, icon("check", 18), "Works on your phone and laptop"),
+          h("li", null, icon("check", 18), "Your invoices are private to your account"))),
+      h("div", { class: "auth-card" },
+        h("h2", { text: signup ? "Create your account" : "Welcome back" }),
+        form,
+        h("p", { class: "auth-switch" }, signup ? "Already have an account? " : "New here? ",
+          h("button", { type: "button", onclick: function () { authMode = signup ? "login" : "signup"; renderAuth(); } }, signup ? "Log in" : "Create an account")),
+        signup ? null : h("p", { class: "auth-switch" },
+          h("button", { type: "button", onclick: function () { authMode = "forgot"; render(); } }, "Forgot password?")))));
+  }
+  function authCard(title, intro, form, backText) {
+    var root = $("#app"); root.textContent = "";
+    root.appendChild(h("div", { class: "auth" },
+      h("div", null, h("h1", { text: "Make invoicing feel as good as getting paid." }), h("p", { class: "lead", text: intro })),
+      h("div", { class: "auth-card" }, h("h2", { text: title }), form,
+        backText ? h("p", { class: "auth-switch" }, h("button", { type: "button", onclick: function () { authMode = "login"; render(); } }, backText)) : null)));
+  }
+  function renderForgot() {
+    var msg = h("div", { role: "alert", style: "display:none" });
+    function show(t, ok) { msg.textContent = t; msg.className = "msg " + (ok ? "ok" : "err"); msg.style.display = ""; }
+    var email = h("input", { type: "email", required: "", autocomplete: "email", placeholder: "you@example.com" });
+    var btn = h("button", { class: "btn primary", type: "submit" }, "Send reset link");
+    var form = h("form", { novalidate: "", onsubmit: function (e) {
+      e.preventDefault();
+      var em = email.value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(em)) { show("Enter a valid email address."); return; }
+      btn.disabled = true; btn.textContent = "Sending...";
+      Promise.resolve(sb.auth.resetPasswordForEmail(em, { redirectTo: resetUrl() })).then(function (res) {
+        if (res.error) show(friendlyAuthError(res.error)); else show("If an account exists for that email, a reset link is on its way. Check your inbox and spam folder.", true);
+        btn.disabled = false; btn.textContent = "Send reset link";
+      }, function (err) { show(friendlyAuthError(err)); btn.disabled = false; btn.textContent = "Send reset link"; });
+    } }, msg, field("Email", email), btn);
+    authCard("Reset your password", "Enter your email and we will send you a link to choose a new password.", form, "Back to log in");
+    if (window.location.protocol === "file:") show("Reset links cannot return to a file opened from your computer. Host Zivo (for example on Cloudflare Pages) for this to work.");
+    else if (hashErr) { hashErr = false; show("That reset link has expired or was already used. Request a new one below."); try { window.history.replaceState(null, "", resetUrl()); } catch (x) { /* ignore */ } }
+  }
+
+  var pubPage = "auth", billing = "m";
+  var LEGAL = {"privacy": ["Privacy Policy", ["We collect your email address and the business and invoice details you type into Zivo, so we can run the service for you.", "Your data is stored with our database provider, Supabase. We do not sell it and we do not share it with advertisers.", "If you pay for Pro, the payment is handled by Razorpay. We never see or store your card details.", "You can ask us to delete your account and data at any time by emailing us."]], "terms": ["Terms of Service", ["Zivo helps you create invoices. You are responsible for the details on them, including tax details, and for following the laws that apply to your business.", "The free plan allows 5 invoices a month. Pro removes that limit and the Zivo watermark.", "Please do not misuse the service. We may close accounts that do.", "We work to keep Zivo available but cannot promise it will never have problems. These terms may change, and we will update this page when they do."]]};
+  function renderPublic(page) {
+    var root = $("#app"); root.textContent = "";
+    function go2(pg) { if (user) { view = pg === "dash" ? "dash" : (pg === "reviews" ? "reviews" : "pricing"); } else { pubPage = pg; } render(); window.scrollTo(0, 0); }
+    function nb(l, pg) { return h("button", { type: "button", class: "pn" + (page === pg ? " on" : ""), onclick: function () { go2(pg); } }, l); }
+    function auth(m) { pubPage = "auth"; authMode = m; render(); window.scrollTo(0, 0); }
+    var nav = h("nav", { class: "pubnav", "aria-label": "Site" }, user ? nb("Dashboard", "dash") : nb("Home", "home"), nb("Pricing", "pricing"), user ? null : nb("About", "about"), nb("Reviews", "reviews"));
+    var act = user ? null : h("div", { class: "pubact" }, h("button", { class: "btn small", type: "button", onclick: function () { auth("login"); } }, "Log in"), h("button", { class: "btn small primary", type: "button", onclick: function () { auth("signup"); } }, "Create account"));
+    var topIn = document.querySelector(".top-in"), topR = topIn.querySelector(".top-right");
+    if (!user) topIn.insertBefore(nav, topR || null);
+    if (act && topR) topR.insertBefore(act, topR.firstChild);
+    function up(label) { return h("button", { class: "btn primary", type: "button", onclick: function () { if (!user) auth("signup"); else toast("Pro payments open very soon. Thank you for your interest!"); } }, label); }
+    var chips = ["Invoice in a minute", "25+ designs", "GST ready", "Share on WhatsApp", "Download PDF", "Works on phone", "Track who has paid"], mq = [];
+    chips.concat(chips).forEach(function (c) { mq.push(h("span", null, c)); });
+    function card(t, d) { return h("div", { class: "card" }, h("h3", { text: t }), h("p", { text: d })); }
+    var cmp = h("table", { class: "cmp" }, h("thead", null, h("tr", null, h("th", { text: "" }), h("th", { text: "Free" }), h("th", { text: "Pro" }))),
+      h("tbody", null, [["Invoices", "5 in total", "Unlimited"], ["Designs", "5", "25+"], ["Zivo watermark", "Yes", "No"], ["PDF and WhatsApp message", "✓", "✓"], ["GST breakdown", "✓", "✓"]].map(function (r) { return h("tr", null, h("td", { text: r[0] }), h("td", { text: r[1] }), h("td", { text: r[2] })); })));
+    var body;
+    if (page === "pricing") {
+      var yr = billing === "y";
+      function tg(l, v) { return h("button", { type: "button", "aria-pressed": billing === v ? "true" : "false", onclick: function () { billing = v; render(); } }, l); }
+      var tgl = h("div", { class: "seg", role: "group", "aria-label": "Billing period" }, tg("Monthly", "m"), tg("Yearly", "y"));
+      function li(t) { return h("li", { text: t }); }
+      body = h("div", { class: "sec ctr" }, h("h2", { text: "Pricing" }), h("p", { style: "color:var(--muted);margin:0 0 20px;max-width:560px", text: "Start free. Move to Pro when you need more than 5 invoices a month. No contracts, and you can cancel any time." }), tgl,
+        h("div", { class: "cards", style: "margin-top:24px;max-width:760px" },
+          h("div", { class: "card plan" }, h("h3", { text: "Free" }), h("div", { class: "price", text: "₹0" }), h("p", { text: "for ever" }), h("ul", null, li("5 invoices a month"), li("5 designs: Classic, Modern, Professional, Creative and GST tax invoice"), li("PDF, WhatsApp message and receipts"), li("Small Zivo watermark")), user ? h("p", { text: "Your current plan" }) : up("Start free")),
+          h("div", { class: "card plan best" }, h("h3", { text: "Pro" }), h("div", { class: "price", text: yr ? "₹499" : "₹59" }), h("p", { text: yr ? "per year. That is about ₹42 a month, and saves about 30%." : "per month" }), h("ul", null, li("Unlimited invoices"), li("All 25+ designs, with more on the way"), li("No Zivo watermark"), li("Everything in Free")), h("button", { class: "btn", type: "button", disabled: "" }, "Coming soon"))));
+    }
+    else if (LEGAL[page]) { var lg = LEGAL[page], lc = h("div", { class: "card" }); lg[1].forEach(function (x) { lc.appendChild(h("p", { style: "margin:0 0 12px", text: x })); }); body = h("div", { class: "sec" }, h("h2", { text: lg[0] }), lc); }
+    else if (page === "about") {
+      function blk(t, ps) { var c = h("div", { class: "card" }, h("h3", { text: t })); ps.forEach(function (x) { c.appendChild(h("p", { style: "margin-top:8px", text: x })); }); return c; }
+      body = h("div", null, h("div", { class: "sec" }, h("h2", { text: "About Zivo" }),
+      h("div", { class: "cards stack" }, card("Who we are", "Zivo is a small team that makes invoicing simple for freelancers and small businesses in India."), card("What we do", "You type the details. Zivo makes a clean invoice you can download or send on WhatsApp."), card("Why we built it", "Many invoice tools are slow or confusing. We wanted one that anyone can use in a minute."), card("Your data", "Your invoices are private to your account."))),
+      h("div", { class: "sec" }, h("h2", { text: "What is Zivo?" }), h("div", { class: "cards stack" }, blk("Invoicing made simple", ["Zivo is a small invoicing tool for freelancers, shop owners and small teams in India. You type in who you are billing and what for, and Zivo turns it into a clean invoice.", "You do not need accounting knowledge or any training. If you can fill in a form, you can send an invoice.", "Everything you need sits in one place: your business details, your clients, your invoices and whether each one has been paid."]))),
+      h("div", { class: "sec" }, h("h2", { text: "25+ designs to match your business" }), h("div", { class: "cards stack" }, blk("Pick the look you like", ["Choose from more than 25 invoice designs. Some are plain black and white, some have a coloured header, and some are laid out like a formal tax invoice.", "Your logo, business name and details are placed for you. You can move the logo left, centre or right and make it bigger or smaller, and the preview updates as you go.", "Switching design never changes your numbers. You can try a few and keep the one you like."]))),
+      h("div", { class: "sec" }, h("h2", { text: "Made for India" }), h("div", { class: "cards stack" }, blk("GST, rupees and WhatsApp", ["Add your GSTIN and the invoice is marked as a tax invoice. Tax is shown as CGST and SGST for clients in your state, or IGST for clients in another state.", "Amounts are in rupees, and you can add your UPI ID or bank details so clients know exactly how to pay.", "When you are ready, send the invoice as a PDF, or share a short WhatsApp message with the items, tax and total already written out."]))),
+      h("div", { class: "sec" }, h("h2", { text: "Who it is for" }), h("div", { class: "cards stack" }, blk("Freelancers and small businesses", ["Designers, developers, tutors, photographers, consultants and small shops: anyone who sends a few invoices a week and wants them to look professional.", "You can use Zivo free for up to 5 invoices a month. If you need more, Pro removes the limit."]))),
+      h("div", { class: "sec" }, h("h2", { text: "Common questions" }), h("div", { class: "cards stack" }, blk("Is it really free?", ["Yes. The free plan lets you create 5 invoices every month. Free invoices carry a small Zivo watermark."]), blk("Can I cancel Pro?", ["Yes, any time. Pro is prepaid and simply will not renew once you cancel."]), blk("Who can see my invoices?", ["Only you. They are saved to your own account and are not shared with anyone."]), blk("Does it work on my phone?", ["Yes. Zivo works in any modern browser on a phone, tablet or computer."]))));
+    }
+    else if (page === "reviews") {
+      var rl = h("div", { class: "cards stack" }, h("p", { class: "hint", text: "Loading reviews..." }));
+      function noRv() { rl.textContent = ""; rl.appendChild(blkR("No reviews yet", "Zivo is new, and we only show reviews written by people who have used it. Be the first.")); }
+      function blkR(t, d) { return h("div", { class: "card" }, h("h3", { text: t }), h("p", { text: d })); }
+      try {
+        Promise.resolve(sb.from("reviews").select("name,rating,body").eq("approved", true).order("created_at", { ascending: false }).limit(30)).then(function (r) {
+          var rows = (r && r.data) || [];
+          if (!rows.length) { noRv(); return; }
+          rl.textContent = "";
+          rows.forEach(function (x) { var n = Math.max(1, Math.min(5, x.rating || 5)); rl.appendChild(h("div", { class: "card" }, h("h3", { text: "★".repeat(n) + "☆".repeat(5 - n) }), h("p", { text: x.body }), h("p", { style: "margin-top:6px;color:var(--muted)", text: x.name || "Zivo user" }))); });
+        }, noRv);
+      } catch (e) { noRv(); }
+      var form;
+      if (user) {
+        var rn = h("input", { type: "text", maxlength: "60", placeholder: "Your name (or business)" }), rr = selectEl([["5", "5 - Excellent"], ["4", "4 - Good"], ["3", "3 - Okay"], ["2", "2 - Poor"], ["1", "1 - Bad"]], "5", function () {}), rt = h("textarea", { rows: "4", maxlength: "600", placeholder: "What did you use Zivo for? What worked, and what did not?" }), rb = h("button", { class: "btn primary", type: "button" }, "Send review");
+        rr.setAttribute("aria-label", "Rating");
+        rb.addEventListener("click", function () {
+          if (rt.value.trim().length < 15) { toast("Please write at least a sentence."); return; }
+          rb.disabled = true;
+          Promise.resolve(sb.from("reviews").insert({ user_id: user.id, name: rn.value.trim().slice(0, 60), rating: parseInt(rr.value, 10), body: rt.value.trim() })).then(function (r) {
+            if (r && r.error) { console.error("Review error", r.error); var em = (r.error.message || "") + " " + (r.error.code || ""); toast(r.error.code === "23505" ? "You have already sent a review. Thank you!" : "Reviews are not available right now. Please try again a little later."); rb.disabled = false; return; }
+            toast("Thank you! Your review will show once we have checked it."); rt.value = "";
+          }, function () { toast("Could not send your review."); rb.disabled = false; });
+        });
+        form = h("div", { style: "max-width:560px;margin-top:36px" }, h("h3", { style: "margin:0 0 12px", text: "Write a review" }), field("Name", rn), field("Rating", rr), field("Your review", rt), rb);
+      } else form = h("div", { style: "margin-top:36px" }, h("p", { text: "Used Zivo? Log in to write a review." }), h("button", { class: "btn primary", type: "button", onclick: function () { auth("login"); } }, "Log in"));
+      body = h("div", { class: "sec" }, h("h2", { text: "Reviews" }), h("p", { style: "color:var(--muted);margin:0 0 20px;max-width:560px", text: "Reviews from people who use Zivo. We check each one before it appears, and we never write or edit them." }), rl, form);
+    }
+    else {
+      function blk(t, ps) { var c = h("div", { class: "card" }, h("h3", { text: t })); ps.forEach(function (x) { c.appendChild(h("p", { style: "margin-top:8px", text: x })); }); return c; }
+      function stp(n, t, d) { return h("div", { class: "card step" }, h("div", { class: "num", text: String(n) }), h("div", null, h("h3", { text: t }), h("p", { text: d }))); }
+      var th = h("div", { class: "thumbs", "aria-hidden": "true" });
+      ["classic", "modern", "x_aurora", "x_ocean", "x_forest", "x_plum"].forEach(function (k) { th.appendChild(h("div", { class: "tp-thumb tc-" + k + tplExtra(k) }, h("i", { class: "h" }), h("i", { class: "t" }), h("i"), h("i", { class: "d" }))); });
+      var steps = h("div", { class: "cards stack" }, stp(1, "Add your business", "Enter your business name, logo, address and GSTIN once. Zivo remembers them, so every new invoice starts already filled in with your details."), stp(2, "Fill in the invoice", "Choose or add a client, then list what you are charging for. Zivo works out the subtotal, discount, GST and total as you type, and shows the finished invoice next to the form."), stp(3, "Send it and track it", "Download a PDF or send a WhatsApp message. When the payment arrives, mark the invoice as paid and download a receipt for your client."));
+      body = h("div", null,
+        h("section", { class: "hero" }, h("i", { class: "blob b1" }), h("i", { class: "blob b2" }), h("i", { class: "blob b3" }), h("div", { class: "eyebrow", text: "Invoicing for freelancers and small businesses in India" }), h("h1", { text: "Send a clear invoice in a minute." }), h("p", { text: "Add your client and the items, check the preview, then send a PDF or a WhatsApp message. Zivo keeps track of what has been paid." }),
+          h("div", { class: "cta" }, h("button", { class: "btn primary", type: "button", onclick: function () { auth("signup"); } }, "Try it free"), h("button", { class: "btn", type: "button", onclick: function () { var e = document.getElementById("how"); if (e) e.scrollIntoView({ behavior: "smooth" }); } }, "How it works"))),
+        h("div", { class: "marq", "aria-hidden": "true" }, h("div", null, mq)),
+        h("div", { class: "sec", id: "how" }, h("h2", { text: "How it works" }), steps),
+        h("div", { class: "ctab" }, h("h2", { text: "Ready to send your first invoice?" }), h("button", { class: "btn", type: "button", onclick: function () { auth("signup"); } }, "Create a free account")));
+    }
+    root.appendChild(h("div", { class: "pub" }, body, h("footer", { class: "pubfoot" }, h("span", { text: "© 2026 Zivo" }), h("span", null, nb("Pricing", "pricing"), user ? null : nb("About", "about"), user ? null : nb("Reviews", "reviews"), user ? null : nb("Privacy", "privacy"), user ? null : nb("Terms", "terms")))));
+  }
+  function renderReset() {
+    var msg = h("div", { role: "alert", style: "display:none" });
+    function show(t) { msg.textContent = t; msg.className = "msg err"; msg.style.display = ""; }
+    var pw = h("input", { type: "password", required: "", autocomplete: "new-password", placeholder: "At least 8 characters" });
+    var pw2 = h("input", { type: "password", required: "", autocomplete: "new-password", placeholder: "Type it again" });
+    var btn = h("button", { class: "btn primary", type: "submit" }, "Save new password");
+    var form = h("form", { novalidate: "", onsubmit: function (e) {
+      e.preventDefault();
+      if (pw.value.length < 8) { show("Use a password with at least 8 characters."); return; }
+      if (pw.value !== pw2.value) { show("The two passwords do not match."); return; }
+      btn.disabled = true; btn.textContent = "Saving...";
+      Promise.resolve(sb.auth.updateUser({ password: pw.value })).then(function (res) {
+        if (res.error) { show(friendlyAuthError(res.error)); btn.disabled = false; btn.textContent = "Save new password"; return; }
+        recovering = false; authMode = "login";
+        try { window.history.replaceState(null, "", window.location.pathname); } catch (x) { /* ignore */ }
+        loadAll(); toast("Password updated. You are logged in.");
+      }, function (err) { show(friendlyAuthError(err)); btn.disabled = false; btn.textContent = "Save new password"; });
+    } }, msg, field("New password", pw), field("Confirm new password", pw2), btn);
+    authCard("Choose a new password", "Pick a new password for your Zivo account.", form, null);
+  }
+  function renderLoading() {
+    var root = $("#app"); root.textContent = "";
+    root.appendChild(h("div", { class: "center-note", role: "status" }, h("h2", { text: "Loading..." }), h("p", { text: "Getting your invoices ready." })));
+  }
+  function renderError() {
+    var root = $("#app"); root.textContent = "";
+    root.appendChild(h("div", { class: "center-note", role: "alert" },
+      h("h2", { text: "Something went wrong" }),
+      h("p", { text: errorText || "Please try again." }),
+      sb && user ? h("button", { class: "btn primary", type: "button", onclick: loadAll }, "Try again")
+                 : h("button", { class: "btn primary", type: "button", onclick: function () { window.location.reload(); } }, "Reload the page")));
+  }
+
+  /* ---------- shell ---------- */
+
+  var acctMenu = null, acctBtn = null;
+  function drawAcct() {
+    var tr = document.querySelector(".top-right");
+    if (!acctBtn) {
+      acctBtn = h("button", { class: "icon-btn acct-btn", type: "button", "aria-label": "Account menu", "aria-haspopup": "true" });
+      acctMenu = h("div", { class: "menu", role: "menu", hidden: "" });
+      var wrap = h("div", { class: "acct" }, acctBtn, acctMenu); wrap.id = "acctWrap";
+      tr.insertBefore(wrap, $("#themeBtn"));
+      acctBtn.addEventListener("click", function (e) { e.stopPropagation(); acctMenu.hidden = !acctMenu.hidden; });
+      document.addEventListener("click", function () { if (acctMenu) acctMenu.hidden = true; });
+    }
+    $("#acctWrap").style.display = user ? "" : "none";
+    if (!user) return;
+    var em = user.email || "";
+    acctBtn.textContent = (em[0] || "U").toUpperCase();
+    function it(label, fn, cls) { return h("button", { type: "button", role: "menuitem", class: cls || "", onclick: function () { acctMenu.hidden = true; fn(); } }, label); }
+    acctMenu.textContent = "";
+    acctMenu.appendChild(h("div", { class: "m", text: em }));
+    acctMenu.appendChild(it("Home", function () { window.location.href = "index.html"; }));
+    acctMenu.appendChild(it("Dashboard", function () { view = "dash"; render(); }));
+    acctMenu.appendChild(it("Business profile", function () { $("#navProfile").click(); }));
+    acctMenu.appendChild(isPro() ? h("div", { class: "m", text: "Premium plan active" }) : it("Upgrade to Pro", function () { window.location.href = "pricing.html"; }, "up"));
+    acctMenu.appendChild(it("Reviews", function () { window.location.href = "reviews.html"; }));
+    acctMenu.appendChild(it("Log out", function () { $("#logoutBtn").click(); }));
+  }
+
+  function userNav() {
+    if (!user || view === "reset" || view === "loading") return;
+    var act = { dash: "dash", edit: "dash", profile: "profile", pricing: "pricing", reviews: "reviews" }[view];
+    function lk(l, key, f) { return h("button", { type: "button", class: "pn" + (act === key ? " on" : ""), onclick: function () { f(); window.scrollTo(0, 0); } }, l); }
+    var nav = h("nav", { class: "pubnav", "aria-label": "Main" },
+      lk("Home", "home", function () { window.location.href = "index.html"; }), lk("Dashboard", "dash", function () { view = "dash"; render(); }), lk("Pricing", "pricing", function () { window.location.href = "pricing.html"; }),
+      lk("Reviews", "reviews", function () { window.location.href = "reviews.html"; }), lk("Business profile", "profile", function () { $("#navProfile").click(); }));
+    var topIn = document.querySelector(".top-in"); topIn.insertBefore(nav, topIn.querySelector(".top-right") || null);
+  }
+
+  var ziloEl = null, ziloT = null, ziloOff = false, ziloX = 24;
+  function ziloWanted() { return false && !ziloOff && !(user && store.profile && store.profile.mascot === false) && view !== "loading"; }
+  function ziloBye() { clearTimeout(ziloT); if (!ziloEl) return; var z = ziloEl; ziloEl = null; z.classList.add("bye"); setTimeout(function () { z.remove(); }, 750); }
+  function ziloSync() {
+    if (!ziloWanted()) { ziloBye(); return; }
+    if (!ziloEl) { ziloEl = h("div", { class: "zilo walk", role: "img", "aria-label": "Zilo, a small sloth helper" }); ziloEl.innerHTML = '<svg viewBox="0 0 64 84" width="56" height="74" aria-hidden="true"><g class="zb"><g class="leg l"><rect x="21" y="60" width="9" height="16" rx="4.5" fill="#3d4a63"/><ellipse cx="25" cy="78" rx="6.5" ry="3.2" fill="#2b2f36"/></g><g class="leg r"><rect x="34" y="60" width="9" height="16" rx="4.5" fill="#3d4a63"/><ellipse cx="39" cy="78" rx="6.5" ry="3.2" fill="#2b2f36"/></g><g class="arm l"><rect x="10" y="38" width="8" height="19" rx="4" fill="#2f8f66"/><circle cx="14" cy="58" r="3.6" fill="#c8a47c"/></g><g class="arm r"><rect x="46" y="38" width="8" height="19" rx="4" fill="#2f8f66"/><circle cx="50" cy="58" r="3.6" fill="#c8a47c"/></g><rect x="17" y="36" width="30" height="28" rx="11" fill="#2f8f66"/><path d="M25 52h14v8H25z" fill="#27795a"/><circle cx="17" cy="14" r="3.4" fill="#b8926a"/><circle cx="47" cy="14" r="3.4" fill="#b8926a"/><ellipse cx="32" cy="22" rx="17" ry="15" fill="#c8a47c"/><ellipse cx="32" cy="24" rx="13" ry="10.5" fill="#efe3d0"/><ellipse cx="24.5" cy="23" rx="5" ry="3.8" fill="#6b5340" transform="rotate(-18 24.5 23)"/><ellipse cx="39.5" cy="23" rx="5" ry="3.8" fill="#6b5340" transform="rotate(18 39.5 23)"/><circle cx="25" cy="23" r="1.9" fill="#fff"/><circle cx="39" cy="23" r="1.9" fill="#fff"/><ellipse cx="32" cy="28.5" rx="2.6" ry="1.9" fill="#3a2a20"/><path d="M28.5 31.5q3.5 3 7 0" stroke="#3a2a20" stroke-width="1.6" fill="none" stroke-linecap="round"/></g></svg><div class="zbub"></div>'; document.body.appendChild(ziloEl); ziloEl.style.left = ziloX + "px"; }
+    var z = ziloEl; clearTimeout(ziloT);
+    if (view === "edit") { z.className = "zilo sit"; return; }
+    z.className = "zilo walk idle";
+    function step() {
+      if (ziloEl !== z || view === "edit") return;
+      var max = Math.max(60, window.innerWidth - 90), tx = 20 + Math.random() * (max - 20), dist = Math.abs(tx - ziloX), dur = Math.max(1.5, dist / 60);
+      z.querySelector("svg").style.transform = tx < ziloX ? "scaleX(-1)" : "none";
+      z.style.transition = "left " + dur + "s linear"; z.classList.remove("idle"); z.style.left = tx + "px"; ziloX = tx;
+      ziloT = setTimeout(function () {
+        if (ziloEl !== z) return; z.classList.add("idle");
+        var pr = (user ? view : pubPage) === "pricing";
+        if (pr && Math.random() < 0.5) { var bb = z.querySelector(".zbub"); bb.textContent = "Pro is coming soon!"; bb.className = "zbub show"; setTimeout(function () { bb.className = "zbub"; }, 2400); }
+        ziloT = setTimeout(step, 2500 + Math.random() * 3500);
+      }, dur * 1000);
+    }
+    z.style.left = ziloX + "px"; ziloT = setTimeout(step, 1200);
+  }
+  var lastKey = null, lastUser = null, popping = false;
+  function render() {
+    renderInner();
+    if (popping || view === "loading" || view === "error") return;
+    var key = user ? "u|" + view + "|" + (currentId || "") : "p|" + pubPage + "|" + authMode, st = { v: view, id: currentId, pp: pubPage, am: authMode, u: !!user };
+    try {
+      if (lastKey === null || (!!user) !== lastUser) history.replaceState(st, "");
+      else if (key !== lastKey) history.pushState(st, "");
+    } catch (e) { /* ignore */ }
+    lastKey = key; lastUser = !!user;
+  }
+  window.addEventListener("popstate", function (e) {
+    var st = e.state; if (!st || view === "loading") return;
+    var p = (view === "edit" && user) ? leaveEditor() : Promise.resolve();
+    Promise.resolve(p).then(function () {
+      popping = true;
+      if (user) { view = ["dash", "edit", "profile", "pricing", "reviews"].indexOf(st.v) >= 0 ? st.v : "dash"; currentId = st.id || currentId; }
+      else { pubPage = st.pp || "home"; authMode = st.am || authMode; }
+      renderInner(); popping = false; lastKey = user ? "u|" + view + "|" + (currentId || "") : "p|" + pubPage + "|" + authMode; window.scrollTo(0, 0);
+    });
+  });
+  function renderInner() {
+    [].forEach.call(document.querySelectorAll(".pubnav, .pubact"), function (x) { x.remove(); });
+    setTimeout(ziloSync, 0);
+    userNav();
+    var authed = !!user && (view === "dash" || view === "edit" || view === "profile");
+    $(".nav").style.display = authed ? "" : "none";
+    drawAcct();
+    $("#who").style.display = authed ? "" : "none";
+    $("#who").textContent = user && user.email ? user.email : "";
+    $("#logoutBtn").style.display = user ? "" : "none";
+    $("#navDash").setAttribute("aria-current", view === "dash" ? "page" : "false");
+    $("#navProfile").setAttribute("aria-current", view === "profile" ? "page" : "false");
+    $("#newBtn").style.display = authed && view === "dash" ? "" : "none";
+    if (view === "loading") renderLoading();
+    else if (view === "error") renderError();
+    else if (view === "reset" && user) renderReset();
+    else if ((view === "pricing" || view === "reviews") && user) renderPublic(view);
+    else if (!user) { if (authMode === "forgot") renderForgot(); else if (pubPage !== "auth") renderPublic(pubPage); else renderAuth(); }
+    else if (view === "edit") renderEditor();
+    else if (view === "profile") renderProfile();
+    else renderDash();
+  }
+
+  $("#newBtn").appendChild(icon("plus", 16));
+  $("#newBtn").appendChild(document.createTextNode("New invoice"));
+  $("#newBtn").addEventListener("click", newAndOpen);
+  $("#navDash").addEventListener("click", function () { go("dash"); });
+  $("#navProfile").addEventListener("click", function () { go("profile"); });
+  var brandEl = $("#brand"); brandEl.innerHTML = '<span class="zlogo"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--primary)"/><path d="M9 10.5h14L9 21.5h14" fill="none" stroke="var(--primary-ink)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>zivo</span></span>'; brandEl.setAttribute("aria-label", "Zivo home");
+  $("#brand").addEventListener("click", function () { if (user) { view = "dash"; render(); } else window.location.href = "index.html"; });
+  $("#themeBtn").addEventListener("click", function () { store.theme = isDark() ? "light" : "dark"; saveTheme(); applyTheme(); });
+  $("#logoutBtn").addEventListener("click", function () {
+    var p = view === "edit" ? leaveEditor() : Promise.resolve();
+    Promise.resolve(p).then(flushAll).then(function () { return sb.auth.signOut(); }).then(function () { window.location.href = "index.html"; }, function () { window.location.href = "index.html"; });
+  });
+  document.addEventListener("visibilitychange", function () { if (document.hidden && user) flushAll(); });
+
+  applyTheme();
+  if (!window.supabase || !window.supabase.createClient) {
+    errorText = "The app could not load a required file. Check your internet connection and reload.";
+    view = "error"; render();
+  } else {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    render();
+    sb.auth.onAuthStateChange(function (ev, session) { handleSession(session, ev); });
+    sb.auth.getSession().then(function (r) { handleSession(r && r.data ? r.data.session : null); },
+      function () { handleSession(null); });
+  }
+})();
+</script>
+</body>
+</html>
