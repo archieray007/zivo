@@ -15,7 +15,7 @@
   function toast(msg) { var t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 3200); }
 
   /* theme */
-  function isDark() { var a = document.documentElement.getAttribute("data-theme"); if (a) return a === "dark"; return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); }
+  function isDark() { var a = document.documentElement.getAttribute("data-theme"); if (a) return a === "dark"; return true; }
   function drawTheme() {
     var b = $("#themeBtn"), d = isDark();
     b.textContent = ""; b.setAttribute("aria-label", d ? "Switch to light mode" : "Switch to dark mode");
@@ -32,6 +32,11 @@
   var sb = null, user = null, page = document.body.getAttribute("data-page");
   function isPro() { return !!(user && user.app_metadata && user.app_metadata.plan === "pro"); }
   function navAct() {
+    if (user) {
+      if (page === "home") { window.location.replace("app.html"); return; }
+      var pn = document.querySelector(".pubnav"); if (pn) pn.remove();
+      var br = document.querySelector(".brand"); if (br) br.setAttribute("href", "app.html");
+    }
     var box = $("#navAct"); if (!box) return; box.textContent = "";
     if (user) box.appendChild(h("a", { class: "btn small primary", href: "app.html", text: "Open dashboard" }));
     else { box.appendChild(h("a", { class: "btn small", href: "app.html#login", text: "Log in" })); box.appendChild(h("a", { class: "btn small primary", href: "app.html#signup", text: "Create account" })); }

@@ -892,3 +892,57 @@ a.pn{display:inline-block}
 .pp-fill{flex:1 1 auto;min-height:20px;margin-top:4px;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 41px,rgba(100,116,139,.24) 41px,rgba(100,116,139,.24) 42px)}
 .paper.pdfmode{min-height:1122px}
 .pp-foot{margin-top:auto!important}
+
+/* ===== Dark by default; light only when the visitor chooses it ===== */
+:root:not([data-theme="light"]) { --bg:#0d1210; --surface:#131a16; --ink:#ece9e4; --muted:#a2aca6; --line:#26302a; --field:#0e1411; --primary:#5fcf9a; --primary-ink:#07140d; --link:#7fdcae; --mint:#5fcf9a; --mint-ink:#07140d; --danger:#ef8f8f;
+  --pill-draft-bg:#1d2420; --pill-draft-ink:#c5cdc8; --pill-sent-bg:#2e2a1c; --pill-sent-ink:#e0c58f; --pill-overdue-bg:#3a1f1f; --pill-overdue-ink:#f1a5a5; --pill-paid-bg:#17382a; --pill-paid-ink:#9be8c1; --glow1:rgba(95,207,154,.25); --glow2:transparent; color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
+/* ===== Phone layout ===== */
+html, body { max-width: 100%; overflow-x: hidden; }
+@media (max-width: 720px) {
+  .top-in { padding: 8px 12px; gap: 8px; }
+  .top-right { gap: 6px; }
+  .pubact .btn { padding: 8px 11px; font-size: 13px; min-height: 40px; }
+  .brand .zlogo { font-size: 20px; }
+  .menu { max-width: calc(100vw - 24px); }
+  .pub .hero { padding: 44px 0 40px; }
+  .pub .hero h1 { font-size: clamp(34px, 11vw, 46px); }
+  .pub .hero p { font-size: 17px; }
+  .pub .sec { padding: 40px 0; }
+  .pub .sec h2 { font-size: 26px; }
+  .pub .cards.stack .card { padding: 14px 0 18px; }
+  .pub .sec.ctr .cards { grid-template-columns: 1fr; }
+  .cmp th, .cmp td { padding: 10px 6px 10px 0; font-size: 14px; }
+  .pubfoot { flex-direction: column; gap: 8px; }
+  .filters { flex-wrap: wrap; }
+  .page-head { gap: 10px; }
+  input, select, textarea { font-size: 16px; }
+  .btn { min-height: 44px; }
+  .paper { padding: 22px 16px; font-size: 14px; }
+  .pp-biz { font-size: 19px; }
+  .pp-title .word { font-size: 24px; }
+  .pp-num { font-size: 14px; }
+  .pp-meta .strong { font-size: 15px; }
+  .pp-table th { padding: 8px 5px; font-size: 11px; }
+  .pp-table td { padding: 10px 5px; font-size: 13.5px; }
+  .pp-totals { width: 100%; } .pp-totals .l { font-size: 14px; }
+  .pp-due { padding: 14px 16px; flex-wrap: wrap; } .pp-due .k { font-size: 13px; } .pp-due .v { font-size: 28px; }
+  .pp-payrow { flex-direction: column; }
+  .pp-foot { margin-top: 22px; }
+  .tp-row .tp { flex: 0 0 92px; }
+  .seg button { padding: 9px 12px; }
+}
+@media (max-width: 380px) { .pubact .btn.small:not(.primary) { display: none; } }
+
+/* PDF: compact mode so a normal invoice fits one A4 page */
+.paper.pdfmode.tight { --py: 38px; font-size: 14px; }
+.tight .pp-rule { margin: 14px 0; }
+.tight .pp-meta { margin-bottom: 16px; }
+.tight .pp-table td { padding: 10px; } .tight .pp-table th { padding: 9px 10px; }
+.tight .pp-totals { margin-top: 10px; } .tight .pp-totals .l { padding: 4px 10px; }
+.tight .pp-due { padding: 14px 20px; } .tight .pp-due .v { font-size: 32px; }
+.tight .pp-foot { margin-top: 18px !important; padding-top: 12px; gap: 10px; }
+.tight .pp-foot .box { padding: 10px 14px; }
+.tight .pp-qr { width: 88px; height: 88px; }
+.tight .pp-title .word { font-size: 32px; }

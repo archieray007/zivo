@@ -757,6 +757,7 @@ var _zl = {};
 
   /* ---------- editor ---------- */
   function newAndOpen() {
+    if (!store.profile.name) { toast("First add your business name, then create an invoice."); go("profile"); return; }
     var ym = todayISO(0).slice(0, 7);
     if (!isPro() && store.invoices.filter(function (x) { return (x.issue || "").slice(0, 7) === ym; }).length >= 5) { toast("The free plan includes 5 invoices a month. Upgrade to Pro for unlimited."); setTimeout(function () { window.location.href = "pricing.html"; }, 1200); return; }
     var inv = createInvoice(); view = view === "edit" ? "edit" : view; go("edit", inv.id); }
@@ -786,8 +787,14 @@ var _zl = {};
     var host = h("div", { class: "pdf-host" }); host.appendChild(el); document.body.appendChild(host);
     var name = ((inv.client && inv.client.name ? inv.client.name + "_" : "") + (inv.number || "invoice")).replace(/[^\w\-]+/g, "_") + ".pdf";
     function clean() { if (host.parentNode) host.parentNode.removeChild(host); }
-    return html2pdf().set({ margin: 0, pagebreak: { mode: ["css", "legacy"], avoid: [".pp-due", ".pp-totals", ".pp-foot", "tr"] }, filename: name, image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", scrollX: 0, scrollY: 0, x: 0, y: 0, windowWidth: 794 }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" } })
-      .from(el).outputPdf("blob").then(function (b) { clean(); return new File([b], name, { type: "application/pdf" }); }, function (e) { clean(); throw e; });
+    return (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function () {
+      var H = 1122; el.style.minHeight = "0"; el.style.height = "auto";
+      if (el.scrollHeight > H) el.classList.add("tight");
+      var fs = el.classList.contains("tight") ? 14 : 15;
+      while (el.scrollHeight > H && fs > 8) { fs -= 0.5; el.style.fontSize = fs + "px"; }
+      el.style.minHeight = H + "px"; el.style.height = H + "px"; el.style.overflow = "hidden";
+      return html2pdf().set({ margin: 0, pagebreak: { mode: ["css"] }, filename: name, image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", scrollX: 0, scrollY: 0, x: 0, y: 0, windowWidth: 794 }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" } })
+      .from(el).outputPdf("blob").then(function (b) { clean(); return new File([b], name, { type: "application/pdf" }); }, function (e) { clean(); throw e; }); });
   }
   function saveFile(f) {
     var u = URL.createObjectURL(f), a = document.createElement("a");
@@ -807,7 +814,8 @@ var _zl = {};
   }
   function shareInvoice(inv, via) {
     var text = shareText(inv);
-    if (via === "wa" && waNumber(inv)) {
+    var canFiles = /Android|iPhone|iPad/i.test(navigator.userAgent) && !!navigator.canShare;
+    if (via === "wa" && waNumber(inv) && !canFiles) {
       window.open(waUrl(inv, text), "_blank", "noopener");
       toast("WhatsApp opened with your message. Saving the PDF to attach...");
       makePdf(inv).then(function (f) { saveFile(f); toast("PDF saved. In the chat, tap the paper-clip and attach it, then send."); }, function () { toast("Could not make the PDF. Try Download PDF."); });
@@ -1071,7 +1079,7 @@ var _zl = {};
   }
   function isDark() {
     if (store.theme) return store.theme === "dark";
-    return !!(window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+    return true;
   }
   /* ---------- login / signup ---------- */
   var hashErr = /error_code=|error=access_denied/.test(window.location.hash || "");
@@ -1170,13 +1178,13 @@ var _zl = {};
     function go2(pg) { if (user) { view = pg === "dash" ? "dash" : (pg === "reviews" ? "reviews" : "pricing"); } else { pubPage = pg; } render(); window.scrollTo(0, 0); }
     function nb(l, pg) { return h("button", { type: "button", class: "pn" + (page === pg ? " on" : ""), onclick: function () { go2(pg); } }, l); }
     function auth(m) { pubPage = "auth"; authMode = m; render(); window.scrollTo(0, 0); }
-    var nav = h("nav", { class: "pubnav", "aria-label": "Site" }, user ? nb("Dashboard", "dash") : nb("Home", "home"), nb("Pricing", "pricing"), user ? null : nb("About", "about"), nb("Reviews", "reviews"));
+    var nav = h("nav", { class: "pubnav", "aria-label": "Site" }, user ? nb("Dashboard", "dash") : nb("Home", "home"), user ? null : nb("Pricing", "pricing"), user ? null : nb("About", "about"), user ? null : nb("Reviews", "reviews"));
     var act = user ? null : h("div", { class: "pubact" }, h("button", { class: "btn small", type: "button", onclick: function () { auth("login"); } }, "Log in"), h("button", { class: "btn small primary", type: "button", onclick: function () { auth("signup"); } }, "Create account"));
     var topIn = document.querySelector(".top-in"), topR = topIn.querySelector(".top-right");
     if (!user) topIn.insertBefore(nav, topR || null);
     if (act && topR) topR.insertBefore(act, topR.firstChild);
     function up(label) { return h("button", { class: "btn primary", type: "button", onclick: function () { if (!user) auth("signup"); else toast("Pro payments open very soon. Thank you for your interest!"); } }, label); }
-    var chips = ["Invoice in a minute", "25+ designs", "GST ready", "Share on WhatsApp", "Download PDF", "Works on phone", "Track who has paid"], mq = [];
+    var chips = ["Invoice in a minute", "25+ designs", "GST support", "Share on WhatsApp", "Download PDF", "Works on phone", "Track who has paid"], mq = [];
     chips.concat(chips).forEach(function (c) { mq.push(h("span", null, c)); });
     function card(t, d) { return h("div", { class: "card" }, h("h3", { text: t }), h("p", { text: d })); }
     var cmp = h("table", { class: "cmp" }, h("thead", null, h("tr", null, h("th", { text: "" }), h("th", { text: "Free" }), h("th", { text: "Pro" }))),
@@ -1299,10 +1307,11 @@ var _zl = {};
     function it(label, fn, cls) { return h("button", { type: "button", role: "menuitem", class: cls || "", onclick: function () { acctMenu.hidden = true; fn(); } }, label); }
     acctMenu.textContent = "";
     acctMenu.appendChild(h("div", { class: "m", text: em }));
-    acctMenu.appendChild(it("Home", function () { window.location.href = "index.html"; }));
     acctMenu.appendChild(it("Dashboard", function () { view = "dash"; render(); }));
     acctMenu.appendChild(it("Business profile", function () { $("#navProfile").click(); }));
     acctMenu.appendChild(isPro() ? h("div", { class: "m", text: "Premium plan active" }) : it("Upgrade to Pro", function () { window.location.href = "pricing.html"; }, "up"));
+    acctMenu.appendChild(it("Pricing", function () { window.location.href = "pricing.html"; }));
+    acctMenu.appendChild(it("About us", function () { window.location.href = "about.html"; }));
     acctMenu.appendChild(it("Reviews", function () { window.location.href = "reviews.html"; }));
     acctMenu.appendChild(it("Log out", function () { $("#logoutBtn").click(); }));
   }
@@ -1312,8 +1321,7 @@ var _zl = {};
     var act = { dash: "dash", edit: "dash", profile: "profile", pricing: "pricing", reviews: "reviews" }[view];
     function lk(l, key, f) { return h("button", { type: "button", class: "pn" + (act === key ? " on" : ""), onclick: function () { f(); window.scrollTo(0, 0); } }, l); }
     var nav = h("nav", { class: "pubnav", "aria-label": "Main" },
-      lk("Home", "home", function () { window.location.href = "index.html"; }), lk("Dashboard", "dash", function () { view = "dash"; render(); }), lk("Pricing", "pricing", function () { window.location.href = "pricing.html"; }),
-      lk("Reviews", "reviews", function () { window.location.href = "reviews.html"; }), lk("Business profile", "profile", function () { $("#navProfile").click(); }));
+      lk("Dashboard", "dash", function () { view = "dash"; render(); }), lk("Business profile", "profile", function () { $("#navProfile").click(); }));
     var topIn = document.querySelector(".top-in"); topIn.insertBefore(nav, topIn.querySelector(".top-right") || null);
   }
 

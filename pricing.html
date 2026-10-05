@@ -7,7 +7,7 @@
 <meta name="description" content="Zivo is free for 5 invoices a month. Pro is Rs 59 a month or Rs 499 a year.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f6b4a'/%3E%3Cpath d='M9 10.5h14L9 21.5h14' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;800&display=swap" rel="stylesheet">
-<script>try{var t=localStorage.getItem("zivo-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<script>try{var t=localStorage.getItem("zivo-theme");document.documentElement.setAttribute("data-theme",t==="light"?"light":"dark")}catch(e){}</script>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body data-page="pricing">
@@ -27,12 +27,12 @@
 <p style="color:var(--muted);margin:0 0 20px;max-width:560px">Start free. Move to Pro when you need more than 5 invoices a month. No contracts, and you can cancel any time.</p>
 <div class="seg" role="group" aria-label="Billing period"><button type="button" id="bm" aria-pressed="true">Monthly</button><button type="button" id="by" aria-pressed="false">Yearly</button></div>
 <div class="cards" style="margin-top:24px;max-width:760px">
-<div class="card plan"><h3>Free</h3><div class="price">₹0</div><p>for ever</p><ul><li>5 invoices a month</li><li>5 designs: Classic, Modern, Professional, Creative and GST tax invoice</li><li>PDF download and receipts</li><li>Small Zivo watermark</li></ul><div id="freeBtn"><a class="btn primary" href="app.html#signup">Start free</a></div></div>
+<div class="card plan"><h3>Free</h3><div class="price">₹0</div><p>for ever</p><ul><li>5 invoices a month</li><li>5 designs: Classic, Modern, Professional, Creative and GST Standard</li><li>PDF download and receipts</li><li>Small Zivo watermark</li></ul><div id="freeBtn"><a class="btn primary" href="app.html#signup">Start free</a></div></div>
 <div class="card plan best"><h3>Pro</h3><div class="price" id="proPrice">₹59</div><p id="proNote">per month</p><ul><li>Unlimited invoices</li><li>All 25+ designs, with more on the way</li><li>No Zivo watermark</li><li>Everything in Free</li></ul><div id="proBtn"><button class="btn" type="button" disabled>Coming soon</button></div></div>
 </div>
 <table class="cmp" style="margin-top:32px;max-width:760px"><thead><tr><th></th><th>Free</th><th>Pro</th></tr></thead><tbody>
-<tr><td>Invoices</td><td>5 a month</td><td>Unlimited</td></tr><tr><td>Designs</td><td>5</td><td>25+</td></tr><tr><td>Zivo watermark</td><td>Yes</td><td>No</td></tr><tr><td>PDF and receipts</td><td>✓</td><td>✓</td></tr><tr><td>GST breakdown</td><td>✓</td><td>✓</td></tr></tbody></table></div>
-<footer class="pubfoot"><span>© 2026 Zivo</span><span><a class="pn" href="pricing.html">Pricing</a><a class="pn" href="about.html">About</a><a class="pn" href="reviews.html">Reviews</a></span></footer>
+<tr><td>Invoices</td><td>5 a month</td><td>Unlimited</td></tr><tr><td>Designs</td><td>5</td><td>25+</td></tr><tr><td>Zivo watermark</td><td>Yes</td><td>No</td></tr><tr><td>PDF and receipts</td><td>✓</td><td>✓</td></tr><tr><td>GST support</td><td>✓</td><td>✓</td></tr></tbody></table></div>
+<footer class="pubfoot"><span>© 2026 Zivo. A tool, not tax advice.</span><span><a class="pn" href="pricing.html">Pricing</a><a class="pn" href="about.html">About</a><a class="pn" href="reviews.html">Reviews</a></span></footer>
 </div>
 </main>
 <div id="toast" role="status" aria-live="polite"></div>
